@@ -187,6 +187,9 @@ dependencies = [
 [[package]]
 name = "chess-core"
 version = "0.1.0"
+dependencies = [
+ "image",
+]
 
 [[package]]
 name = "color_quant"
