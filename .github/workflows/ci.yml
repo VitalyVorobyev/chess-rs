@@ -1,4 +1,5 @@
 name: ci
+
 on:
   push:
   pull_request:
@@ -9,10 +10,19 @@ jobs:
     strategy:
       matrix:
         toolchain: [stable, nightly]
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@master
-        with: { toolchain: ${{ matrix.toolchain }} }
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+        with:
+          toolchain: ${{ matrix.toolchain }}
+
+      - name: fmt
+        run: cargo fmt --all --check
+
+      - name: clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: test
+        run: cargo test --workspace
