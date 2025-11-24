@@ -1,12 +1,12 @@
-#![cfg_attr(not(feature="std"), no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
-pub mod ring;
 pub mod response;
+pub mod ring;
 
 #[derive(Clone, Debug)]
 pub struct ChessParams {
-    pub radius: u32,         // canonical: 5 (or 10 for heavy blur) :contentReference[oaicite:2]{index=2}
-    pub threshold_rel: f32,  // used in later phase; keep here for API stability
+    pub radius: u32, // canonical: 5 (or 10 for heavy blur) :contentReference[oaicite:2]{index=2}
+    pub threshold_rel: f32, // used in later phase; keep here for API stability
 }
 
 impl Default for ChessParams {
@@ -27,7 +27,8 @@ pub struct ResponseMap {
 }
 
 impl ResponseMap {
-    #[inline] pub fn at(&self, x: usize, y: usize) -> f32 {
-        self.data[y*self.w + x]
+    #[inline]
+    pub fn at(&self, x: usize, y: usize) -> f32 {
+        self.data[y * self.w + x]
     }
 }
