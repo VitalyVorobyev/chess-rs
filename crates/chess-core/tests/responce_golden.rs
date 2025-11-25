@@ -1,7 +1,11 @@
-use std::{fs::File, io::Read, path::Path};
+use std::{fs::File, io::Read, path::{Path, PathBuf}};
 use image::ImageReader;
 use chess_core::{ChessParams};
 use chess_core::response::chess_response_u8;
+
+fn testdata_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata")
+}
 
 fn read_golden(path: &Path) -> (usize, usize, Vec<f32>) {
     let mut buf = Vec::new();
@@ -24,7 +28,8 @@ fn read_golden(path: &Path) -> (usize, usize, Vec<f32>) {
 #[test]
 fn response_matches_golden_set() {
     let params = ChessParams::default();
-    let imgs = std::fs::read_dir("testdata/images").unwrap();
+    let data_root = testdata_root();
+    let imgs = std::fs::read_dir(data_root.join("images")).unwrap();
 
     for e in imgs {
         let p = e.unwrap().path();
@@ -37,7 +42,7 @@ fn response_matches_golden_set() {
         let resp = chess_response_u8(img.as_raw(), w, h, &params);
 
         let name = p.file_stem().unwrap().to_string_lossy();
-        let gold_path = Path::new("testdata/golden").join(format!("{name}.bin"));
+        let gold_path = data_root.join("golden").join(format!("{name}.bin"));
         let (gw, gh, gdata) = read_golden(&gold_path);
 
         assert_eq!((gw, gh), (resp.w, resp.h));

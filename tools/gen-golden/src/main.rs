@@ -1,6 +1,6 @@
 // tools/gen_golden.rs
 use std::{fs::File, io::Write, path::Path};
-use image::io::Reader as ImageReader;
+use image::ImageReader;
 use chess_core::{ChessParams};
 use chess_core::response::chess_response_u8;
 
