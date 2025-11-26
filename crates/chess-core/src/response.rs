@@ -1,7 +1,31 @@
+//! Dense ChESS response computation for 8-bit grayscale inputs.
 use crate::ring::ring_offsets;
 use crate::{ChessParams, ResponseMap};
 
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+
+/// Compute the dense ChESS response for an 8-bit grayscale image.
+///
+/// Automatically parallelizes over rows when built with the `rayon` feature.
 pub fn chess_response_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -> ResponseMap {
+    // rayon path compiled only when feature is enabled
+    #[cfg(feature = "rayon")]
+    {
+        return compute_response_parallel(img, w, h, params);
+    }
+    #[cfg(not(feature = "rayon"))]
+    {
+        compute_response_sequential(img, w, h, params)
+    }
+}
+
+fn compute_response_sequential(
+    img: &[u8],
+    w: usize,
+    h: usize,
+    params: &ChessParams,
+) -> ResponseMap {
     let r = params.radius as i32;
     let ring = ring_offsets(params.radius);
 
@@ -23,7 +47,41 @@ pub fn chess_response_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -
     ResponseMap { w, h, data }
 }
 
-#[inline]
+#[cfg(feature = "rayon")]
+fn compute_response_parallel(img: &[u8], w: usize, h: usize, params: &ChessParams) -> ResponseMap {
+    let r = params.radius as i32;
+    let ring = ring_offsets(params.radius);
+    let mut data = vec![0.0f32; w * h];
+
+    // ring margin
+    let x0 = r as usize;
+    let y0 = r as usize;
+    let x1 = w - r as usize;
+    let y1 = h - r as usize;
+
+    // Parallelize over rows. We keep the exact same logic and write
+    // each row's slice independently.
+    data.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+        if y < y0 || y >= y1 {
+            return;
+        }
+        for x in x0..x1 {
+            let resp = chess_response_at_u8(img, w, x as i32, y as i32, ring);
+            row[x] = resp;
+        }
+    });
+
+    ResponseMap { w, h, data }
+}
+
+// Fallback stub when rayon feature is off so the name still exists
+#[cfg(not(feature = "rayon"))]
+#[allow(dead_code)]
+fn compute_response_parallel(img: &[u8], w: usize, h: usize, params: &ChessParams) -> ResponseMap {
+    compute_response_sequential(img, w, h, params)
+}
+
+#[inline(always)]
 fn chess_response_at_u8(img: &[u8], w: usize, x: i32, y: i32, ring: &[(i32, i32); 16]) -> f32 {
     // gather ring samples into i32
     let mut s = [0i32; 16];
