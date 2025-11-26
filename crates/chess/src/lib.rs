@@ -3,6 +3,8 @@
 mod pyramid;
 
 pub use chess_core::*;
+use chess_core::detect::detect_corners_from_response;
+use chess_core::response::chess_response_u8_patch;
 
 pub use crate::pyramid::{build_pyramid, Pyramid, PyramidLevel, PyramidParams};
 
@@ -51,6 +53,29 @@ pub struct MultiscaleCorner {
     pub strength: f32,
 }
 
+/// Parameters controlling coarse-to-fine refinement on an image pyramid.
+///
+/// - `pyramid`: how the pyramid is built (levels, scale factor, min size).
+/// - `roi_radius`: half-size of the refinement ROI (in base pixels).
+/// - `merge_radius`: radius used to merge duplicate refined corners.
+pub struct CoarseToFineParams {
+    pub pyramid: PyramidParams,
+    pub roi_radius: u32,
+    pub merge_radius: f32,
+}
+
+impl Default for CoarseToFineParams {
+    fn default() -> Self {
+        Self {
+            pyramid: PyramidParams::default(),
+            // generous ROI (2*16+1 = 33px window) around coarse prediction
+            roi_radius: 16,
+            // merge duplicates within ~2 pixels
+            merge_radius: 2.0,
+        }
+    }
+}
+
 /// Detect corners across an image pyramid and merge nearby detections.
 ///
 /// Coordinates are rescaled back to the base image so consumers can treat the
@@ -97,6 +122,154 @@ pub fn find_corners_multiscale_image(
     // TODO: merge duplicates (see next point)
     merge_corners_simple(&mut all, 2.0)
 }
+
+/// Coarse-to-fine corner detection on an image pyramid.
+///
+/// Algorithm:
+/// 1. Build a pyramid according to `cf.pyramid`.
+/// 2. Run full ChESS detection on the coarsest level only.
+/// 3. Upscale each coarse corner to base-level coordinates.
+/// 4. Around each predicted location, compute a ChESS response patch at the
+///    base level and run NMS + subpixel refinement inside that patch.
+/// 5. Merge duplicates within `cf.merge_radius`.
+///
+/// This trades a small amount of complexity for a significant speed-up on
+/// large images, since the dense response is never computed for the full
+/// base-resolution frame.
+pub fn find_corners_coarse_to_fine_image(
+    img: &image::GrayImage,
+    params: &ChessParams,
+    cf: &CoarseToFineParams,
+) -> Vec<MultiscaleCorner> {
+    let pyramid = build_pyramid(img, &cf.pyramid);
+    if pyramid.levels.is_empty() {
+        return Vec::new();
+    }
+
+    let base_w = img.width() as usize;
+    let base_h = img.height() as usize;
+    let base_w_i = base_w as i32;
+    let base_h_i = base_h as i32;
+
+    // Use the last (smallest) level as the coarse detector input.
+    let coarse_lvl = match pyramid.levels.last() {
+        Some(l) => l,
+        None => return Vec::new(),
+    };
+
+    let coarse_w = coarse_lvl.img.width() as usize;
+    let coarse_h = coarse_lvl.img.height() as usize;
+
+    // Full detection on coarse level
+    let coarse_corners = chess_core::detect::find_corners_u8(
+        coarse_lvl.img.as_raw(),
+        coarse_w,
+        coarse_h,
+        params,
+    );
+
+    if coarse_corners.is_empty() {
+        return Vec::new();
+    }
+
+    let inv_scale = 1.0 / coarse_lvl.scale;
+
+    // Compute the same "border" margin as the core detector uses.
+    let ring_r = params.radius as i32;
+    let nms_r = params.nms_radius as i32;
+    let refine_r = 2i32; // 5x5 refinement window
+    let border = (ring_r + nms_r + refine_r).max(0);
+    // Require a bit of breathing room inside the image
+    let safe_margin = border + 1;
+
+    let roi_r = cf.roi_radius as i32;
+
+    let mut refined = Vec::new();
+
+    for c in coarse_corners {
+        // Project coarse coordinate to base image
+        let cx_base = c.xy[0] * inv_scale;
+        let cy_base = c.xy[1] * inv_scale;
+
+        let cx = cx_base.round() as i32;
+        let cy = cy_base.round() as i32;
+
+        // Skip coarse seeds that are too close to the image border to safely
+        // build an ROI and run refinement.
+        if cx < safe_margin
+            || cy < safe_margin
+            || cx >= base_w_i - safe_margin
+            || cy >= base_h_i - safe_margin
+        {
+            continue;
+        }
+
+        // Initial ROI proposal around the coarse prediction.
+        let mut x0 = cx - roi_r;
+        let mut y0 = cy - roi_r;
+        let mut x1 = cx + roi_r + 1;
+        let mut y1 = cy + roi_r + 1;
+
+        // Clamp ROI to stay inside the area where full ring + 5x5 refinement
+        // are safe. This mirrors the detector's own border logic.
+        let min_xy = border;
+        let max_x = base_w_i - border;
+        let max_y = base_h_i - border;
+
+        if x0 < min_xy {
+            x0 = min_xy;
+        }
+        if y0 < min_xy {
+            y0 = min_xy;
+        }
+        if x1 > max_x {
+            x1 = max_x;
+        }
+        if y1 > max_y {
+            y1 = max_y;
+        }
+
+        // Ensure ROI is still large enough to run NMS + refinement.
+        if x1 - x0 <= 2 * border || y1 - y0 <= 2 * border {
+            continue;
+        }
+
+        let x0u = x0 as usize;
+        let y0u = y0 as usize;
+        let x1u = x1 as usize;
+        let y1u = y1 as usize;
+
+        // Compute response only inside this ROI at base level.
+        let patch_resp = chess_response_u8_patch(
+            img.as_raw(),
+            base_w,
+            base_h,
+            params,
+            x0u,
+            y0u,
+            x1u,
+            y1u,
+        );
+
+        if patch_resp.w == 0 || patch_resp.h == 0 {
+            continue;
+        }
+
+        // Run the standard detector on the patch response. It treats the patch
+        // as an independent image with its own (0,0) origin.
+        let mut patch_corners = detect_corners_from_response(&patch_resp, params);
+
+        for pc in patch_corners.drain(..) {
+            refined.push(MultiscaleCorner {
+                xy: [pc.xy[0] + x0 as f32, pc.xy[1] + y0 as f32],
+                strength: pc.strength,
+            });
+        }
+    }
+
+    merge_corners_simple(&mut refined, cf.merge_radius)
+}
+
 
 fn merge_corners_simple(corners: &mut Vec<MultiscaleCorner>, radius: f32) -> Vec<MultiscaleCorner> {
     let r2 = radius * radius;

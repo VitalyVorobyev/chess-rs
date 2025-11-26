@@ -20,6 +20,75 @@ pub fn chess_response_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -
     }
 }
 
+/// Compute the ChESS response only inside a rectangular ROI of the image.
+///
+/// The ROI is given in image coordinates [x0, x1) × [y0, y1). The returned
+/// ResponseMap has width (x1 - x0) and height (y1 - y0), with coordinates
+/// relative to (x0, y0).
+///
+/// Pixels where the ChESS ring would go out of bounds (w.r.t. the *full*
+/// image) are left at 0.0, and will be ignored by the detector because they
+/// lie inside the border margin.
+pub fn chess_response_u8_patch(
+    img: &[u8],
+    img_w: usize,
+    img_h: usize,
+    params: &ChessParams,
+    x0: usize,
+    y0: usize,
+    x1: usize,
+    y1: usize,
+) -> ResponseMap {
+    // Clamp ROI to the image bounds
+    let x0 = x0.min(img_w);
+    let y0 = y0.min(img_h);
+    let x1 = x1.min(img_w);
+    let y1 = y1.min(img_h);
+
+    if x1 <= x0 || y1 <= y0 {
+        return ResponseMap {
+            w: 0,
+            h: 0,
+            data: Vec::new(),
+        };
+    }
+
+    let patch_w = x1 - x0;
+    let patch_h = y1 - y0;
+    let mut data = vec![0.0f32; patch_w * patch_h];
+
+    let r = params.radius as i32;
+    let ring = ring_offsets(params.radius);
+
+    // Safe region for ring centers in *global* image coordinates
+    let gx0 = r as usize;
+    let gy0 = r as usize;
+    let gx1 = img_w - r as usize;
+    let gy1 = img_h - r as usize;
+
+    for py in 0..patch_h {
+        let gy = y0 + py;
+        if gy < gy0 || gy >= gy1 {
+            continue;
+        }
+        for px in 0..patch_w {
+            let gx = x0 + px;
+            if gx < gx0 || gx >= gx1 {
+                continue;
+            }
+
+            let resp = chess_response_at_u8(img, img_w, gx as i32, gy as i32, ring);
+            data[py * patch_w + px] = resp;
+        }
+    }
+
+    ResponseMap {
+        w: patch_w,
+        h: patch_h,
+        data,
+    }
+}
+
 fn compute_response_sequential(
     img: &[u8],
     w: usize,
