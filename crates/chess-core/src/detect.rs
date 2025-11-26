@@ -1,5 +1,5 @@
-use crate::{ChessParams, ResponseMap};
 use crate::response::chess_response_u8;
+use crate::{ChessParams, ResponseMap};
 use std::time::Instant;
 
 /// A detected ChESS corner (subpixel).
@@ -39,7 +39,11 @@ pub fn find_corners_u8_with_trace(
     let corners = detect_corners_from_response(&resp, params);
     let detect_ms = detect_started.elapsed().as_secs_f64() * 1000.0;
 
-    ChessResult { corners, resp_ms, detect_ms }
+    ChessResult {
+        corners,
+        resp_ms,
+        detect_ms,
+    }
 }
 
 /// Compute corners starting from an 8-bit grayscale image.
@@ -48,12 +52,7 @@ pub fn find_corners_u8_with_trace(
 /// - chess_response_u8 (dense response map)
 /// - thresholding + NMS
 /// - 5x5 center-of-mass subpixel refinement
-pub fn find_corners_u8(
-    img: &[u8],
-    w: usize,
-    h: usize,
-    params: &ChessParams,
-) -> Vec<Corner> {
+pub fn find_corners_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -> Vec<Corner> {
     let resp = chess_response_u8(img, w, h, params);
     detect_corners_from_response(&resp, params)
 }
@@ -61,10 +60,7 @@ pub fn find_corners_u8(
 /// Core detector: run NMS + refinement on an existing response map.
 ///
 /// Useful if you want to reuse the response map for debugging or tuning.
-pub fn detect_corners_from_response(
-    resp: &ResponseMap,
-    params: &ChessParams,
-) -> Vec<Corner> {
+pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) -> Vec<Corner> {
     let w = resp.w;
     let h = resp.h;
 
@@ -83,9 +79,7 @@ pub fn detect_corners_from_response(
         return Vec::new();
     }
 
-    let mut thr = params
-        .threshold_abs
-        .unwrap_or(params.threshold_rel * max_r);
+    let mut thr = params.threshold_abs.unwrap_or(params.threshold_rel * max_r);
 
     if thr < 0.0 {
         // Don’t use a negative threshold; that would accept noise.

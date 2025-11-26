@@ -1,8 +1,8 @@
 // tools/gen_golden.rs
-use std::{fs::File, io::Write, path::Path};
-use image::ImageReader;
-use chess_core::{ChessParams};
 use chess_core::response::chess_response_u8;
+use chess_core::ChessParams;
+use image::ImageReader;
+use std::{fs::File, io::Write, path::Path};
 
 fn write_golden(path_out: &Path, w: usize, h: usize, data: &[f32]) -> std::io::Result<()> {
     let mut f = File::create(path_out)?;
@@ -22,7 +22,9 @@ fn main() -> anyhow::Result<()> {
 
     for e in imgs {
         let p = e?.path();
-        if p.extension().and_then(|s| s.to_str()) != Some("png") { continue; }
+        if p.extension().and_then(|s| s.to_str()) != Some("png") {
+            continue;
+        }
         let img = ImageReader::open(&p)?.decode()?.to_luma8();
 
         let w = img.width() as usize;

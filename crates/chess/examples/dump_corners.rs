@@ -5,8 +5,8 @@ use image::{
     ImageBuffer, ImageReader, Luma,
 };
 use serde::Serialize;
-use std::{fs::File, io::Write, path::PathBuf};
 use std::time::Instant;
+use std::{fs::File, io::Write, path::PathBuf};
 
 #[derive(Serialize)]
 struct CornerOut {
@@ -52,8 +52,8 @@ fn main() -> anyhow::Result<()> {
 
     let img = ImageReader::open(&input)?.decode()?.to_luma8();
     let work_img = if downsample > 1 {
-        let w = (img.width() + downsample - 1) / downsample;
-        let h = (img.height() + downsample - 1) / downsample;
+        let w = img.width().div_ceil(downsample);
+        let h = img.height().div_ceil(downsample);
         resize(&img, w, h, FilterType::Triangle)
     } else {
         img.clone()
@@ -63,6 +63,8 @@ fn main() -> anyhow::Result<()> {
     let chess_started = Instant::now();
     let mut res = find_corners_image_trace(&work_img, &params);
     let chess_ms = chess_started.elapsed().as_secs_f64() * 1000.0;
+
+    println!("image {}x{} pixels", work_img.height(), work_img.width());
     println!("chess: {:5.2} ms", chess_ms);
     println!(" -   resp: {:5.2} ms", res.resp_ms);
     println!(" - detect: {:5.2} ms", res.detect_ms);
@@ -75,7 +77,11 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    println!("Detected {} corners (downsample={})", res.corners.len(), downsample);
+    println!(
+        "Detected {} corners (downsample={})",
+        res.corners.len(),
+        downsample
+    );
 
     let json_out = input.with_extension("corners.json");
     let dump = CornerDump {
@@ -83,7 +89,8 @@ fn main() -> anyhow::Result<()> {
         width: img.width(),
         height: img.height(),
         downsample,
-        corners: res.corners
+        corners: res
+            .corners
             .iter()
             .map(|c| CornerOut {
                 x: c.xy[0],

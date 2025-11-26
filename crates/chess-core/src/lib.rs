@@ -1,8 +1,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod detect;
 pub mod response;
 pub mod ring;
-pub mod detect;
 
 #[derive(Clone, Debug)]
 pub struct ChessParams {

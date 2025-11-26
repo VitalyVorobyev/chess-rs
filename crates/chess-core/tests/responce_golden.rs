@@ -1,7 +1,11 @@
-use std::{fs::File, io::Read, path::{Path, PathBuf}};
-use image::ImageReader;
-use chess_core::{ChessParams};
 use chess_core::response::chess_response_u8;
+use chess_core::ChessParams;
+use image::ImageReader;
+use std::{
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+};
 
 fn testdata_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../testdata")
@@ -14,14 +18,14 @@ fn read_golden(path: &Path) -> (usize, usize, Vec<f32>) {
     let w = u32::from_le_bytes(buf[0..4].try_into().unwrap()) as usize;
     let h = u32::from_le_bytes(buf[4..8].try_into().unwrap()) as usize;
 
-    let mut data = Vec::with_capacity(w*h);
+    let mut data = Vec::with_capacity(w * h);
     let mut i = 8;
     while i < buf.len() {
-        let v = f32::from_le_bytes(buf[i..i+4].try_into().unwrap());
+        let v = f32::from_le_bytes(buf[i..i + 4].try_into().unwrap());
         data.push(v);
         i += 4;
     }
-    assert_eq!(data.len(), w*h);
+    assert_eq!(data.len(), w * h);
     (w, h, data)
 }
 
@@ -33,7 +37,9 @@ fn response_matches_golden_set() {
 
     for e in imgs {
         let p = e.unwrap().path();
-        if p.extension().and_then(|s| s.to_str()) != Some("png") { continue; }
+        if p.extension().and_then(|s| s.to_str()) != Some("png") {
+            continue;
+        }
 
         let img = ImageReader::open(&p).unwrap().decode().unwrap().to_luma8();
         let w = img.width() as usize;

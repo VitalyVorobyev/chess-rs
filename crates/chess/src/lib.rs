@@ -13,7 +13,10 @@ pub fn chess_response_image(img: &GrayImage, params: &ChessParams) -> ResponseMa
 }
 
 /// Detect subpixel corners from an `image::GrayImage`.
-pub fn find_corners_image(img: &GrayImage, params: &ChessParams) -> Vec<chess_core::detect::Corner> {
+pub fn find_corners_image(
+    img: &GrayImage,
+    params: &ChessParams,
+) -> Vec<chess_core::detect::Corner> {
     chess_core::detect::find_corners_u8(
         img.as_raw(),
         img.width() as usize,
@@ -23,7 +26,10 @@ pub fn find_corners_image(img: &GrayImage, params: &ChessParams) -> Vec<chess_co
 }
 
 /// Detect subpixel corners from an `image::GrayImage`.
-pub fn find_corners_image_trace(img: &GrayImage, params: &ChessParams) -> chess_core::detect::ChessResult {
+pub fn find_corners_image_trace(
+    img: &GrayImage,
+    params: &ChessParams,
+) -> chess_core::detect::ChessResult {
     chess_core::detect::find_corners_u8_with_trace(
         img.as_raw(),
         img.width() as usize,
