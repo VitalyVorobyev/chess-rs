@@ -5,6 +5,18 @@ use crate::{ChessParams, ResponseMap};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
+#[cfg(feature = "simd")]
+use core::simd::Simd;
+
+#[cfg(feature = "simd")]
+const LANES: usize = 16;
+
+#[cfg(feature = "simd")]
+type U8s = Simd<u8, LANES>;
+
+#[cfg(feature = "simd")]
+type F32s = Simd<f32, LANES>;
+
 /// Compute the dense ChESS response for an 8-bit grayscale image.
 ///
 /// Automatically parallelizes over rows when built with the `rayon` feature.
@@ -18,6 +30,12 @@ pub fn chess_response_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -
     {
         compute_response_sequential(img, w, h, params)
     }
+}
+
+/// Always uses the scalar implementation (no rayon, no SIMD),
+/// useful for reference/golden testing.
+pub fn chess_response_u8_scalar(img: &[u8], w: usize, h: usize, params: &ChessParams) -> ResponseMap {
+    compute_response_sequential_scalar(img, w, h, params)
 }
 
 /// Compute the ChESS response only inside a rectangular ROI of the image.
