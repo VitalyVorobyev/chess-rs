@@ -1,5 +1,5 @@
 use anyhow::Context;
-use chess::{find_corners_multiscale_image, ChessParams, PyramidParams};
+use chess::{find_corners_coarse_to_fine_image_trace, ChessParams, CoarseToFineParams};
 use image::{ImageBuffer, ImageReader, Luma};
 use serde::Serialize;
 use std::{fs::File, io::Write, path::PathBuf};
@@ -17,8 +17,13 @@ struct CornerDump {
     width: u32,
     height: u32,
     pyramid_levels: u8,
-    scale_factor: f32,
     min_size: u32,
+    roi_radius: u32,
+    merge_radius: f32,
+    build_ms: f64,
+    coarse_ms: f64,
+    refine_ms: f64,
+    merge_ms: f64,
     corners: Vec<CornerOut>,
 }
 
@@ -26,40 +31,47 @@ fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let input: PathBuf = args
         .next()
-        .expect(
-            "usage: dump_corners_multiscale <image> [--levels N] [--scale FACTOR] [--min-size PX]",
-        )
+        .expect("usage: dump_corners_multiscale <image> [--levels N] [--min-size PX] [--roi PX] [--merge R]")
         .into();
 
-    let mut pyr = PyramidParams::default();
+    let mut cf = CoarseToFineParams::default();
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--levels" => {
                 let v = args.next().context("expected an integer after --levels")?;
-                pyr.num_levels = v.parse().context("could not parse levels as u8")?;
-                if pyr.num_levels == 0 {
+                cf.pyramid.num_levels = v.parse().context("could not parse levels as u8")?;
+                if cf.pyramid.num_levels == 0 {
                     anyhow::bail!("levels must be >= 1");
-                }
-            }
-            "--scale" => {
-                let v = args.next().context("expected a number after --scale")?;
-                pyr.scale_factor = v
-                    .parse()
-                    .context("could not parse scale factor (use a float between 0 and 1)")?;
-                if !(0.0..1.0).contains(&pyr.scale_factor) {
-                    anyhow::bail!("scale factor must be in (0, 1)");
                 }
             }
             "--min-size" => {
                 let v = args
                     .next()
                     .context("expected an integer after --min-size")?;
-                pyr.min_size = v
+                cf.pyramid.min_size = v
                     .parse()
                     .context("could not parse min-size (use integer >= 1)")?;
-                if pyr.min_size == 0 {
+                if cf.pyramid.min_size == 0 {
                     anyhow::bail!("min-size must be >= 1");
+                }
+            }
+            "--roi" => {
+                let v = args.next().context("expected an integer after --roi")?;
+                cf.roi_radius = v
+                    .parse()
+                    .context("could not parse roi radius (use integer >= 1)")?;
+                if cf.roi_radius == 0 {
+                    anyhow::bail!("roi radius must be >= 1");
+                }
+            }
+            "--merge" => {
+                let v = args.next().context("expected a float after --merge")?;
+                cf.merge_radius = v
+                    .parse()
+                    .context("could not parse merge radius (use float > 0)")?;
+                if cf.merge_radius <= 0.0 {
+                    anyhow::bail!("merge radius must be > 0");
                 }
             }
             other => anyhow::bail!("unknown argument: {other}"),
@@ -69,22 +81,33 @@ fn main() -> anyhow::Result<()> {
     let img = ImageReader::open(&input)?.decode()?.to_luma8();
     let params = ChessParams::default();
 
-    let corners = find_corners_multiscale_image(&img, &params, &pyr);
+    let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf);
+
     println!(
         "Detected {} corners across {} pyramid levels",
-        corners.len(),
-        pyr.num_levels
+        res.corners.len(),
+        cf.pyramid.num_levels
     );
+    println!("pyramid: {:5.2} ms", res.build_ms);
+    println!(" coarse: {:5.2} ms", res.coarse_ms);
+    println!(" refine: {:5.2} ms", res.refine_ms);
+    println!("  merge: {:5.2} ms", res.merge_ms);
 
     let json_out = input.with_extension("multiscale.corners.json");
     let dump = CornerDump {
         image: input.to_string_lossy().into_owned(),
         width: img.width(),
         height: img.height(),
-        pyramid_levels: pyr.num_levels,
-        scale_factor: pyr.scale_factor,
-        min_size: pyr.min_size,
-        corners: corners
+        pyramid_levels: cf.pyramid.num_levels,
+        min_size: cf.pyramid.min_size,
+        roi_radius: cf.roi_radius,
+        merge_radius: cf.merge_radius,
+        build_ms: res.build_ms,
+        coarse_ms: res.coarse_ms,
+        refine_ms: res.refine_ms,
+        merge_ms: res.merge_ms,
+        corners: res
+            .corners
             .iter()
             .map(|c| CornerOut {
                 x: c.xy[0],
@@ -100,7 +123,7 @@ fn main() -> anyhow::Result<()> {
 
     // simple visualization: draw small 3x3 white squares around corners
     let mut vis: ImageBuffer<Luma<u8>, _> = img.clone();
-    for c in &corners {
+    for c in &res.corners {
         let x = c.xy[0].round() as i32;
         let y = c.xy[1].round() as i32;
         for dy in -1..=1 {

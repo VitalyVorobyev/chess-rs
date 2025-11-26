@@ -2,9 +2,12 @@
 
 mod pyramid;
 
-pub use chess_core::*;
 use chess_core::detect::detect_corners_from_response;
 use chess_core::response::chess_response_u8_patch;
+pub use chess_core::*;
+#[cfg(feature = "rayon")]
+use rayon::prelude::*;
+use std::time::Instant;
 
 pub use crate::pyramid::{build_pyramid, Pyramid, PyramidLevel, PyramidParams};
 
@@ -64,12 +67,25 @@ pub struct CoarseToFineParams {
     pub merge_radius: f32,
 }
 
+/// Timing breakdown for the coarse-to-fine detector.
+pub struct CoarseToFineResult {
+    pub corners: Vec<MultiscaleCorner>,
+    /// Time to build the pyramid (ms).
+    pub build_ms: f64,
+    /// Time spent on the coarse detection at the smallest level (ms).
+    pub coarse_ms: f64,
+    /// Time spent refining ROIs at the base resolution (ms).
+    pub refine_ms: f64,
+    /// Time spent merging overlapping refined corners (ms).
+    pub merge_ms: f64,
+}
+
 impl Default for CoarseToFineParams {
     fn default() -> Self {
         Self {
             pyramid: PyramidParams::default(),
-            // generous ROI (2*16+1 = 33px window) around coarse prediction
-            roi_radius: 16,
+            // smaller ROI (2*12+1 = 25px window) around coarse prediction
+            roi_radius: 12,
             // merge duplicates within ~2 pixels
             merge_radius: 2.0,
         }
@@ -141,9 +157,30 @@ pub fn find_corners_coarse_to_fine_image(
     params: &ChessParams,
     cf: &CoarseToFineParams,
 ) -> Vec<MultiscaleCorner> {
+    find_corners_coarse_to_fine_image_trace(img, params, cf).corners
+}
+
+/// Coarse-to-fine corner detection with timing stats.
+///
+/// See [`find_corners_coarse_to_fine_image`] for the algorithm outline. This
+/// variant additionally reports per-stage timings so you can profile the
+/// multiscale pipeline.
+pub fn find_corners_coarse_to_fine_image_trace(
+    img: &image::GrayImage,
+    params: &ChessParams,
+    cf: &CoarseToFineParams,
+) -> CoarseToFineResult {
+    let build_started = Instant::now();
     let pyramid = build_pyramid(img, &cf.pyramid);
+    let build_ms = build_started.elapsed().as_secs_f64() * 1000.0;
     if pyramid.levels.is_empty() {
-        return Vec::new();
+        return CoarseToFineResult {
+            corners: Vec::new(),
+            build_ms,
+            coarse_ms: 0.0,
+            refine_ms: 0.0,
+            merge_ms: 0.0,
+        };
     }
 
     let base_w = img.width() as usize;
@@ -152,24 +189,28 @@ pub fn find_corners_coarse_to_fine_image(
     let base_h_i = base_h as i32;
 
     // Use the last (smallest) level as the coarse detector input.
-    let coarse_lvl = match pyramid.levels.last() {
-        Some(l) => l,
-        None => return Vec::new(),
-    };
+    let coarse_lvl = pyramid
+        .levels
+        .last()
+        .expect("pyramid levels are non-empty after earlier check");
 
     let coarse_w = coarse_lvl.img.width() as usize;
     let coarse_h = coarse_lvl.img.height() as usize;
 
     // Full detection on coarse level
-    let coarse_corners = chess_core::detect::find_corners_u8(
-        coarse_lvl.img.as_raw(),
-        coarse_w,
-        coarse_h,
-        params,
-    );
+    let coarse_started = Instant::now();
+    let coarse_corners =
+        chess_core::detect::find_corners_u8(coarse_lvl.img.as_raw(), coarse_w, coarse_h, params);
+    let coarse_ms = coarse_started.elapsed().as_secs_f64() * 1000.0;
 
     if coarse_corners.is_empty() {
-        return Vec::new();
+        return CoarseToFineResult {
+            corners: Vec::new(),
+            build_ms,
+            coarse_ms,
+            refine_ms: 0.0,
+            merge_ms: 0.0,
+        };
     }
 
     let inv_scale = 1.0 / coarse_lvl.scale;
@@ -184,9 +225,9 @@ pub fn find_corners_coarse_to_fine_image(
 
     let roi_r = cf.roi_radius as i32;
 
-    let mut refined = Vec::new();
+    let refine_started = Instant::now();
 
-    for c in coarse_corners {
+    let refine_one = |c: chess_core::detect::Corner| -> Option<Vec<MultiscaleCorner>> {
         // Project coarse coordinate to base image
         let cx_base = c.xy[0] * inv_scale;
         let cy_base = c.xy[1] * inv_scale;
@@ -201,7 +242,7 @@ pub fn find_corners_coarse_to_fine_image(
             || cx >= base_w_i - safe_margin
             || cy >= base_h_i - safe_margin
         {
-            continue;
+            return None;
         }
 
         // Initial ROI proposal around the coarse prediction.
@@ -231,7 +272,7 @@ pub fn find_corners_coarse_to_fine_image(
 
         // Ensure ROI is still large enough to run NMS + refinement.
         if x1 - x0 <= 2 * border || y1 - y0 <= 2 * border {
-            continue;
+            return None;
         }
 
         let x0u = x0 as usize;
@@ -240,36 +281,64 @@ pub fn find_corners_coarse_to_fine_image(
         let y1u = y1 as usize;
 
         // Compute response only inside this ROI at base level.
-        let patch_resp = chess_response_u8_patch(
-            img.as_raw(),
-            base_w,
-            base_h,
-            params,
-            x0u,
-            y0u,
-            x1u,
-            y1u,
-        );
+        let patch_resp =
+            chess_response_u8_patch(img.as_raw(), base_w, base_h, params, x0u, y0u, x1u, y1u);
 
         if patch_resp.w == 0 || patch_resp.h == 0 {
-            continue;
+            return None;
         }
 
         // Run the standard detector on the patch response. It treats the patch
         // as an independent image with its own (0,0) origin.
         let mut patch_corners = detect_corners_from_response(&patch_resp, params);
 
+        let mut out = Vec::with_capacity(patch_corners.len());
         for pc in patch_corners.drain(..) {
-            refined.push(MultiscaleCorner {
+            out.push(MultiscaleCorner {
                 xy: [pc.xy[0] + x0 as f32, pc.xy[1] + y0 as f32],
                 strength: pc.strength,
             });
         }
+
+        if out.is_empty() {
+            None
+        } else {
+            Some(out)
+        }
+    };
+
+    #[cfg(feature = "rayon")]
+    let mut refined: Vec<MultiscaleCorner> = coarse_corners
+        .into_par_iter()
+        .filter_map(refine_one)
+        .flatten()
+        .collect();
+
+    #[cfg(not(feature = "rayon"))]
+    let mut refined: Vec<MultiscaleCorner> = {
+        let mut acc = Vec::new();
+        for c in coarse_corners {
+            if let Some(mut v) = refine_one(c) {
+                acc.append(&mut v);
+            }
+        }
+        acc
+    };
+
+    let refine_ms = refine_started.elapsed().as_secs_f64() * 1000.0;
+
+    let merge_started = Instant::now();
+    let merged = merge_corners_simple(&mut refined, cf.merge_radius);
+    let merge_ms = merge_started.elapsed().as_secs_f64() * 1000.0;
+
+    CoarseToFineResult {
+        corners: merged,
+        build_ms,
+        coarse_ms,
+        refine_ms,
+        merge_ms,
     }
-
-    merge_corners_simple(&mut refined, cf.merge_radius)
 }
-
 
 fn merge_corners_simple(corners: &mut Vec<MultiscaleCorner>, radius: f32) -> Vec<MultiscaleCorner> {
     let r2 = radius * radius;
@@ -330,5 +399,18 @@ mod tests {
         let pyramid = PyramidParams::default();
         let res = find_corners_multiscale_image(&img, &params, &pyramid);
         assert!(res.is_empty());
+    }
+
+    #[test]
+    fn coarse_to_fine_trace_reports_timings() {
+        let img = GrayImage::from_pixel(32, 32, Luma([0u8]));
+        let params = ChessParams::default();
+        let cf = CoarseToFineParams::default();
+        let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf);
+        assert!(res.build_ms >= 0.0);
+        assert!(res.coarse_ms >= 0.0);
+        assert!(res.refine_ms >= 0.0);
+        assert!(res.merge_ms >= 0.0);
+        assert!(res.corners.is_empty());
     }
 }

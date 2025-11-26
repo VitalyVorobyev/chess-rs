@@ -1,6 +1,5 @@
 //! Simple image pyramid utilities used by the multiscale corner finder.
 
-use image::imageops::{resize, FilterType};
 use image::GrayImage;
 
 /// A single pyramid level. The `scale` is relative to the base image.
@@ -20,8 +19,6 @@ pub struct PyramidParams {
     pub num_levels: u8,
     /// Stop building when either dimension falls below this value.
     pub min_size: u32,
-    /// Downscale factor between subsequent levels (must be in `(0, 1)`).
-    pub scale_factor: f32,
 }
 
 impl Default for PyramidParams {
@@ -29,26 +26,48 @@ impl Default for PyramidParams {
         Self {
             num_levels: 3,
             min_size: 128,
-            scale_factor: 0.5,
         }
     }
 }
 
-/// Build a top-down image pyramid using the provided parameters.
+fn downsample_2x(src: &GrayImage) -> GrayImage {
+    let (w, h) = src.dimensions();
+    let w2 = w / 2;
+    let h2 = h / 2;
+
+    let mut dst = GrayImage::new(w2, h2);
+
+    for y in 0..h2 {
+        for x in 0..w2 {
+            // simple 2x2 box filter
+            let sx = x * 2;
+            let sy = y * 2;
+
+            let p00 = src.get_pixel(sx, sy)[0] as u16;
+            let p01 = src.get_pixel(sx + 1, sy)[0] as u16;
+            let p10 = src.get_pixel(sx, sy + 1)[0] as u16;
+            let p11 = src.get_pixel(sx + 1, sy + 1)[0] as u16;
+            let avg = ((p00 + p01 + p10 + p11) / 4) as u8;
+
+            dst.put_pixel(x, y, image::Luma([avg]));
+        }
+    }
+
+    dst
+}
+
+/// Build a top-down image pyramid using fixed 2× downsampling.
 ///
-/// The base image is always included as level 0. Each subsequent level is
-/// resized with a Triangle filter to approximately `scale_factor` of the
-/// previous level. Construction stops when:
+/// The base image is always included as level 0. Each subsequent level is a
+/// 2× downsampled copy (box filter). Construction stops when:
 /// - either dimension would fall below `min_size`, or
-/// - `num_levels` is reached, or
-/// - a downscale would not reduce the dimensions (guards against `scale_factor`
-///   values that are too close to 1.0).
+/// - `num_levels` is reached.
 pub fn build_pyramid(base: &GrayImage, pp: &PyramidParams) -> Pyramid {
     let mut levels = Vec::new();
     let mut img = base.clone();
     let mut scale = 1.0f32;
 
-    for level in 0..pp.num_levels {
+    for _level in 0..pp.num_levels {
         if img.width() < pp.min_size || img.height() < pp.min_size {
             break;
         }
@@ -57,18 +76,12 @@ pub fn build_pyramid(base: &GrayImage, pp: &PyramidParams) -> Pyramid {
             scale,
         });
 
-        if level + 1 < pp.num_levels {
-            let next_w = ((img.width() as f32) * pp.scale_factor).floor().max(1.0) as u32;
-            let next_h = ((img.height() as f32) * pp.scale_factor).floor().max(1.0) as u32;
-
-            // Prevent infinite loops if the scale factor is too close to 1.0.
-            if next_w == img.width() || next_h == img.height() {
-                break;
-            }
-
-            img = resize(&img, next_w, next_h, FilterType::Triangle);
-            scale *= pp.scale_factor;
+        if img.width() < 2 || img.height() < 2 {
+            break;
         }
+
+        img = downsample_2x(&img);
+        scale *= 0.5;
     }
 
     Pyramid { levels }
@@ -89,7 +102,6 @@ mod tests {
         let params = PyramidParams {
             num_levels: 4,
             min_size: 8,
-            scale_factor: 0.5,
         };
         let pyramid = build_pyramid(&base, &params);
         let dims: Vec<_> = pyramid
@@ -104,21 +116,19 @@ mod tests {
     }
 
     #[test]
-    fn build_pyramid_stops_when_scale_factor_too_close_to_one() {
-        let base = blank(32, 32);
+    fn build_pyramid_stops_when_reaching_min_size() {
+        let base = blank(20, 20);
         let params = PyramidParams {
             num_levels: 5,
-            min_size: 4,
-            scale_factor: 0.95,
+            min_size: 6,
         };
         let pyramid = build_pyramid(&base, &params);
-        // 32 -> 30 -> 28 -> 26 -> 24 ... ensure it terminates and keeps shrinking
-        assert!(pyramid.levels.len() >= 2);
-        for pair in pyramid.levels.windows(2) {
-            let a = &pair[0];
-            let b = &pair[1];
-            assert!(b.img.width() < a.img.width());
-            assert!(b.img.height() < a.img.height());
-        }
+        // 20 -> 10 -> 5 (stop at min_size)
+        let dims: Vec<_> = pyramid
+            .levels
+            .iter()
+            .map(|lvl| (lvl.img.width(), lvl.img.height()))
+            .collect();
+        assert_eq!(dims, vec![(20, 20), (10, 10)]);
     }
 }

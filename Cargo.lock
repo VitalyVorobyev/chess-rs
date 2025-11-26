@@ -183,6 +183,7 @@ dependencies = [
  "anyhow",
  "chess-core",
  "image",
+ "rayon",
  "serde",
  "serde_json",
 ]
