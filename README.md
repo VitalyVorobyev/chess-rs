@@ -7,7 +7,7 @@ ChESS is a classical, ID-free detector for chessboard **X-junction** corners. Th
 ## Highlights
 - Canonical 16-sample rings (r=5 default, r=10 for heavy blur).
 - Dense response computation plus NMS, minimum-cluster filtering, and 5x5 center-of-mass refinement.
-- Optional `rayon` parallelism on the response path.
+- Optional `rayon` parallelism on the response path and SIMD downsampling for pyramids.
 - Two crates:
   - `chess-core`: lean core (std optional) meant to stay SIMD/parallel-friendly.
   - `chess`: ergonomic facade that accepts `image::GrayImage`.

@@ -1,3 +1,4 @@
+#![cfg_attr(feature = "simd", feature(portable_simd))]
 //! Ergonomic wrappers over `chess-core` that accept `image::GrayImage` inputs.
 
 pub mod logger;
