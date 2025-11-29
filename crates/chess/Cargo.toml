@@ -14,6 +14,7 @@ simd = ["chess-core/simd"]
 [dependencies]
 chess-core = { path = "../chess-core", version = "0.1.0" }
 image = "0.25"
+log = "0.4"
 rayon = { version = "1.10", optional = true }
 
 [dev-dependencies]

@@ -1,5 +1,6 @@
 //! Ergonomic wrappers over `chess-core` that accept `image::GrayImage` inputs.
 
+pub mod logger;
 mod pyramid;
 
 use chess_core::detect::detect_corners_from_response;
@@ -78,6 +79,8 @@ pub struct CoarseToFineResult {
     pub refine_ms: f64,
     /// Time spent merging overlapping refined corners (ms).
     pub merge_ms: f64,
+    pub coarse_cols: usize,
+    pub coarse_rows: usize,
 }
 
 impl Default for CoarseToFineParams {
@@ -180,6 +183,8 @@ pub fn find_corners_coarse_to_fine_image_trace(
             coarse_ms: 0.0,
             refine_ms: 0.0,
             merge_ms: 0.0,
+            coarse_cols: 0,
+            coarse_rows: 0,
         };
     }
 
@@ -210,6 +215,8 @@ pub fn find_corners_coarse_to_fine_image_trace(
             coarse_ms,
             refine_ms: 0.0,
             merge_ms: 0.0,
+            coarse_cols: coarse_w,
+            coarse_rows: coarse_h,
         };
     }
 
@@ -347,6 +354,8 @@ pub fn find_corners_coarse_to_fine_image_trace(
         coarse_ms,
         refine_ms,
         merge_ms,
+        coarse_cols: coarse_w,
+        coarse_rows: coarse_h,
     }
 }
 

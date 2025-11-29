@@ -40,6 +40,11 @@ def main() -> None:
         help="Corners JSON produced by dump_corners (defaults to <image>.corners.json).",
     )
     parser.add_argument(
+        "--multi",
+        action="store_true",
+        help="Prefer multiscale dump naming (<image>.multiscale.corners.json).",
+    )
+    parser.add_argument(
         "--out",
         type=Path,
         help="Output path for overlay PNG (defaults to <image>.corners_overlay.png).",
@@ -47,7 +52,14 @@ def main() -> None:
     args = parser.parse_args()
 
     image_path = args.image
-    json_path = args.json or image_path.with_suffix(".corners.json")
+    if args.json:
+        json_path = args.json
+    else:
+        primary = image_path.with_suffix(".corners.json")
+        alt = image_path.with_suffix(".multiscale.corners.json")
+        json_path = alt if args.multi else primary
+        if not json_path.exists():
+            json_path = primary if json_path == alt else alt
     out_path = args.out or image_path.with_suffix(".corners_overlay.png")
 
     img = Image.open(image_path)
