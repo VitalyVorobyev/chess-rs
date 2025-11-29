@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use chess_cli::commands::{load_config, run_detection, DetectionMode};
 use std::str::FromStr;
+use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Parser)]
 #[command(author, version, about = "ChESS detector CLI", long_about = None)]
@@ -57,6 +59,9 @@ enum Commands {
         /// Min cluster size override.
         #[arg(long)]
         min_cluster_size: Option<u32>,
+        /// Emit tracing in JSON format.
+        #[arg(long)]
+        json_trace: bool,
     },
 }
 
@@ -79,7 +84,9 @@ fn main() -> Result<()> {
             radius,
             nms_radius,
             min_cluster_size,
+            json_trace,
         } => {
+            init_tracing(json_trace);
             let mut cfg = load_config(&config)?;
             if let Some(m) = mode {
                 cfg.mode = Some(m);
@@ -122,5 +129,23 @@ fn main() -> Result<()> {
             }
             run_detection(cfg)
         }
+    }
+}
+
+fn init_tracing(json: bool) {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    if json {
+        let _ = fmt()
+            .with_env_filter(filter)
+            .json()
+            .flatten_event(true)
+            .finish()
+            .try_init();
+    } else {
+        let _ = fmt()
+            .with_env_filter(filter)
+            .with_timer(fmt::time::Uptime::default())
+            .finish()
+            .try_init();
     }
 }

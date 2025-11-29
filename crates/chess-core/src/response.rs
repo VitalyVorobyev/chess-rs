@@ -23,6 +23,9 @@ type I16s = Simd<i16, LANES>;
 #[cfg(feature = "simd")]
 type I32s = Simd<i32, LANES>;
 
+#[cfg(feature = "tracing")]
+use tracing::instrument;
+
 /// Rectangular region of interest, in image coordinates.
 #[derive(Clone, Copy, Debug)]
 pub struct Roi {
@@ -85,6 +88,7 @@ pub struct Roi {
 /// All feature combinations produce the same output values (within a
 /// small tolerance for floating‑point rounding), and differ only in
 /// performance characteristics.
+#[cfg_attr(feature = "tracing", instrument(level = "debug", skip(img, params), fields(w, h)))]
 pub fn chess_response_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -> ResponseMap {
     // rayon path compiled only when feature is enabled
     #[cfg(feature = "rayon")]
@@ -120,6 +124,14 @@ pub fn chess_response_u8_scalar(
 /// SIMD, and optional `rayon` row kernels as [`chess_response_u8`], so ROI
 /// refinement benefits from the same feature combinations as the full-frame
 /// response path.
+#[cfg_attr(
+    feature = "tracing",
+    instrument(
+        level = "debug",
+        skip(img, params),
+        fields(img_w, img_h, roi_w = roi.x1 - roi.x0, roi_h = roi.y1 - roi.y0)
+    )
+)]
 pub fn chess_response_u8_patch(
     img: &[u8],
     img_w: usize,

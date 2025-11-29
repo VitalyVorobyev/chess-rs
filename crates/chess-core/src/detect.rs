@@ -3,6 +3,9 @@ use crate::response::chess_response_u8;
 use crate::{ChessParams, ResponseMap};
 use std::time::Instant;
 
+#[cfg(feature = "tracing")]
+use tracing::instrument;
+
 /// A detected ChESS corner (subpixel).
 #[derive(Clone, Debug)]
 pub struct Corner {
@@ -15,6 +18,9 @@ pub struct Corner {
 }
 
 /// Timed detection outcome containing corners and profiling data.
+///
+/// Profiling helper; prefer enabling the `tracing` feature for detailed
+/// instrumentation. Timing fields are not guaranteed to stay stable.
 pub struct ChessResult {
     /// Refined corners (in image coordinates).
     pub corners: Vec<Corner>,
@@ -30,6 +36,10 @@ pub struct ChessResult {
 /// - chess_response_u8 (dense response map)
 /// - thresholding + NMS
 /// - 5x5 center-of-mass subpixel refinement
+#[cfg_attr(
+    feature = "tracing",
+    instrument(level = "debug", skip(img, params), fields(w, h))
+)]
 pub fn find_corners_u8_with_trace(
     img: &[u8],
     w: usize,
@@ -67,6 +77,10 @@ pub fn find_corners_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -> 
 /// Useful if you want to reuse the response map for debugging or tuning. Honors
 /// relative vs absolute thresholds, enforces the configurable NMS radius, and
 /// rejects isolated responses via `min_cluster_size`.
+#[cfg_attr(
+    feature = "tracing",
+    instrument(level = "debug", skip(resp, params), fields(w = resp.w, h = resp.h))
+)]
 pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) -> Vec<Corner> {
     let w = resp.w;
     let h = resp.h;

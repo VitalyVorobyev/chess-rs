@@ -4,10 +4,7 @@
 //! output) around the `chess` detection APIs so both the CLI and examples can
 //! share the same behavior.
 
-use crate::{
-    find_corners_coarse_to_fine_image_trace, find_corners_image_trace, CoarseToFineParams,
-    PyramidBuffers,
-};
+use crate::{CoarseToFineParams, PyramidBuffers};
 use anyhow::{Context, Result};
 use chess_core::ChessParams;
 use image::{
@@ -107,11 +104,11 @@ fn run_single(cfg: DetectionConfig) -> Result<()> {
     let mut params = ChessParams::default();
     apply_params_overrides(&mut params, &cfg);
 
-    let mut res = find_corners_image_trace(&work_img, &params);
+    let mut corners = crate::image::find_corners_image(&work_img, &params);
 
     if downsample > 1 {
         let s = downsample as f32;
-        for c in &mut res.corners {
+        for c in &mut corners {
             c.xy[0] *= s;
             c.xy[1] *= s;
         }
@@ -130,14 +127,13 @@ fn run_single(cfg: DetectionConfig) -> Result<()> {
         min_size: None,
         roi_radius: None,
         merge_radius: None,
-        resp_ms: Some(res.resp_ms),
-        detect_ms: Some(res.detect_ms),
+        resp_ms: None,
+        detect_ms: None,
         build_ms: None,
         coarse_ms: None,
         refine_ms: None,
         merge_ms: None,
-        corners: res
-            .corners
+        corners: corners
             .iter()
             .map(|c| CornerOut {
                 x: c.xy[0],
@@ -193,7 +189,7 @@ fn run_multiscale(cfg: DetectionConfig) -> Result<()> {
     let mut buffers = PyramidBuffers::with_capacity(cf.pyramid.num_levels);
     buffers.prepare_for_image(&img, &cf.pyramid);
 
-    let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf, &mut buffers);
+    let res = crate::multiscale::find_corners_coarse_to_fine_image(&img, &params, &cf, &mut buffers);
 
     let json_out = cfg
         .output_json
@@ -210,12 +206,11 @@ fn run_multiscale(cfg: DetectionConfig) -> Result<()> {
         merge_radius: Some(cf.merge_radius),
         resp_ms: None,
         detect_ms: None,
-        build_ms: Some(res.build_ms),
-        coarse_ms: Some(res.coarse_ms),
-        refine_ms: Some(res.refine_ms),
-        merge_ms: Some(res.merge_ms),
+        build_ms: None,
+        coarse_ms: None,
+        refine_ms: None,
+        merge_ms: None,
         corners: res
-            .corners
             .iter()
             .map(|c| CornerOut {
                 x: c.xy[0],

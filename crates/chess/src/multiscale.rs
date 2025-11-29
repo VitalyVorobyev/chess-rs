@@ -15,7 +15,8 @@ use chess_core::ChessParams;
 use image::GrayImage;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
-use std::time::Instant;
+#[cfg(feature = "tracing")]
+use tracing::{debug_span, instrument};
 
 /// Corner detected in a multiscale run, reported in base-level coordinates.
 pub struct MultiscaleCorner {
@@ -52,6 +53,8 @@ pub struct CoarseToFineResult {
     pub coarse_cols: usize,
     pub coarse_rows: usize,
 }
+// Profiling helper; prefer enabling the `tracing` feature. Timing fields are
+// best-effort and may change.
 
 impl Default for CoarseToFineParams {
     fn default() -> Self {
@@ -116,6 +119,10 @@ impl CoarseToFineParams {
 /// let corners = find_corners_multiscale_image(&img, &params, &pyramid, &mut buffers);
 /// assert!(corners.is_empty());
 /// ```
+#[cfg_attr(
+    feature = "tracing",
+    instrument(level = "debug", skip(img, p, py, buffers))
+)]
 pub fn find_corners_multiscale_image(
     img: &GrayImage,
     p: &ChessParams,
@@ -174,15 +181,22 @@ pub fn find_corners_coarse_to_fine_image(
 /// See [`find_corners_coarse_to_fine_image`] for the algorithm outline. This
 /// variant additionally reports per-stage timings so you can profile the
 /// multiscale pipeline.
+#[cfg_attr(
+    feature = "tracing",
+    instrument(
+        level = "debug",
+        skip(img, params, cf, buffers),
+        fields(levels = cf.pyramid.num_levels, min_size = cf.pyramid.min_size)
+    )
+)]
 pub fn find_corners_coarse_to_fine_image_trace(
     img: &GrayImage,
     params: &ChessParams,
     cf: &CoarseToFineParams,
     buffers: &mut PyramidBuffers,
 ) -> CoarseToFineResult {
-    let build_started = Instant::now();
     let pyramid = build_pyramid(img, &cf.pyramid, buffers);
-    let build_ms = build_started.elapsed().as_secs_f64() * 1000.0;
+    let build_ms = 0.0;
     if pyramid.levels.is_empty() {
         return CoarseToFineResult {
             corners: Vec::new(),
@@ -210,10 +224,13 @@ pub fn find_corners_coarse_to_fine_image_trace(
     let coarse_h = coarse_lvl.img.height() as usize;
 
     // Full detection on coarse level
-    let coarse_started = Instant::now();
+    #[cfg(feature = "tracing")]
+    let coarse_span = debug_span!("coarse").entered();
     let coarse_corners =
         detect::find_corners_u8(coarse_lvl.img.as_raw(), coarse_w, coarse_h, params);
-    let coarse_ms = coarse_started.elapsed().as_secs_f64() * 1000.0;
+    #[cfg(feature = "tracing")]
+    drop(coarse_span);
+    let coarse_ms = 0.0;
 
     if coarse_corners.is_empty() {
         return CoarseToFineResult {
@@ -244,7 +261,8 @@ pub fn find_corners_coarse_to_fine_image_trace(
     let min_roi_r = border + 2;
     let roi_r = roi_r_base.max(min_roi_r);
 
-    let refine_started = Instant::now();
+    #[cfg(feature = "tracing")]
+    let refine_span = debug_span!("refine").entered();
 
     let refine_one = |c: detect::Corner| -> Option<Vec<MultiscaleCorner>> {
         // Project coarse coordinate to base image
@@ -354,11 +372,16 @@ pub fn find_corners_coarse_to_fine_image_trace(
         acc
     };
 
-    let refine_ms = refine_started.elapsed().as_secs_f64() * 1000.0;
+    #[cfg(feature = "tracing")]
+    drop(refine_span);
+    let refine_ms = 0.0;
 
-    let merge_started = Instant::now();
+    #[cfg(feature = "tracing")]
+    let merge_span = debug_span!("merge").entered();
     let merged = merge_corners_simple(&mut refined, cf.merge_radius);
-    let merge_ms = merge_started.elapsed().as_secs_f64() * 1000.0;
+    #[cfg(feature = "tracing")]
+    drop(merge_span);
+    let merge_ms = 0.0;
 
     CoarseToFineResult {
         corners: merged,
