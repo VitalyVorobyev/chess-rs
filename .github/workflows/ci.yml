@@ -40,9 +40,8 @@ jobs:
       - name: test chess-core feature matrix (no simd)
         if: matrix.toolchain == 'stable'
         run: |
-          cargo test -p chess-core --tests --no-default-features
-          cargo test -p chess-core --tests --no-default-features --features std
-          cargo test -p chess-core --tests --no-default-features --features "std,rayon"
+          cargo test -p chess-core --tests
+          cargo test -p chess-core --tests --features rayon
 
       - name: test chess-core feature matrix (simd)
         if: matrix.toolchain == 'nightly'
