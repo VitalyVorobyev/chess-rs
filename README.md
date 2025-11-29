@@ -40,7 +40,7 @@ Need timings for profiling? Swap in `find_corners_image_trace` to get per-stage 
 ### Multiscale (coarse-to-fine)
 
 ```rust
-use chess::{find_corners_coarse_to_fine_image_trace, ChessParams, CoarseToFineParams, PyramidBuffers};
+use chess::{find_corners_coarse_to_fine_image, ChessParams, CoarseToFineParams, PyramidBuffers};
 use image::io::Reader as ImageReader;
 
 let img = ImageReader::open("board.png")?.decode()?.to_luma8();
@@ -49,7 +49,7 @@ let cf = CoarseToFineParams::default();
 let mut buffers = PyramidBuffers::new();
 buffers.prepare_for_image(&img, &cf.pyramid);
 
-let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf, &mut buffers);
+let res = find_corners_coarse_to_fine_image(&img, &params, &cf, &mut buffers);
 println!("coarse stage ran in {:.2} ms, refined {} corners", res.coarse_ms, res.corners.len());
 ```
 
@@ -109,17 +109,23 @@ You can override any field via CLI flags (e.g., `--mode single --downsample 2 --
   - Enable SIMD (nightly only) on the core: `cargo test -p chess-core --features simd`
   - Enable both SIMD and `rayon`: `cargo test -p chess-core --features "simd,rayon"`
 
+- Tracing: enable structured spans for profiling by turning on the `tracing`
+  feature in the libraries, and use env filters with the CLI:
+  - `cargo test -p chess-core --features tracing`
+  - `RUST_LOG=info cargo run -p chess-cli -- run config/chess_cli_config.example.json`
+  - `--json-trace` switches the CLI to emit JSON-formatted spans.
+
 ## Status
 
 Implemented:
-- response kernel, ring tables, NMS + thresholding + cluster filter, 5x5 subpixel refinement, image helpers, data-free unit tests
+- response kernel, ring tables, NMS + thresholding + cluster filter, 5x5 subpixel refinement, image helpers, data-free unit tests, tracing instrumentation
 - multiscale pyramid builder with reusable buffers and coarse-to-fine corner refinement path
 - SIMD acceleration and optional `rayon` parallelism on the response and pyramid paths
 - CLI tooling and plotting helper for JSON/PNG-based inspection
 
 ## License
 
-Licensed under MIT.
+Dual-licensed under MIT or Apache-2.0.
 
 ## References
 

@@ -6,6 +6,8 @@
 //! downsample uses portable SIMD for higher throughput.
 
 use image::GrayImage;
+#[cfg(feature = "tracing")]
+use tracing::instrument;
 
 /// Reusable backing storage for pyramid construction.
 ///
@@ -116,6 +118,14 @@ impl Default for PyramidParams {
 /// when:
 /// - either dimension would fall below `min_size`, or
 /// - `num_levels` is reached.
+#[cfg_attr(
+    feature = "tracing",
+    instrument(
+        level = "debug",
+        skip(base, params, buffers),
+        fields(levels = params.num_levels, min_size = params.min_size)
+    )
+)]
 pub fn build_pyramid<'a>(
     base: &'a GrayImage,
     params: &PyramidParams,

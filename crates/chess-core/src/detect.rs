@@ -1,7 +1,9 @@
 //! Corner detection utilities built on top of the dense ChESS response map.
 use crate::response::chess_response_u8;
 use crate::{ChessParams, ResponseMap};
-use std::time::Instant;
+
+#[cfg(feature = "tracing")]
+use tracing::instrument;
 
 /// A detected ChESS corner (subpixel).
 #[derive(Clone, Debug)]
@@ -12,43 +14,6 @@ pub struct Corner {
     pub strength: f32,
     /// Pyramid level / scale (0 for full-res; reserved for future multi-scale).
     pub scale: u8,
-}
-
-/// Timed detection outcome containing corners and profiling data.
-pub struct ChessResult {
-    /// Refined corners (in image coordinates).
-    pub corners: Vec<Corner>,
-    /// Time spent computing the dense response (milliseconds).
-    pub resp_ms: f64,
-    /// Time spent on thresholding, NMS, and refinement (milliseconds).
-    pub detect_ms: f64,
-}
-
-/// Compute corners starting from an 8-bit grayscale image.
-///
-/// This is a convenience that combines:
-/// - chess_response_u8 (dense response map)
-/// - thresholding + NMS
-/// - 5x5 center-of-mass subpixel refinement
-pub fn find_corners_u8_with_trace(
-    img: &[u8],
-    w: usize,
-    h: usize,
-    params: &ChessParams,
-) -> ChessResult {
-    let resp_started = Instant::now();
-    let resp = chess_response_u8(img, w, h, params);
-    let resp_ms = resp_started.elapsed().as_secs_f64() * 1000.0;
-
-    let detect_started = Instant::now();
-    let corners = detect_corners_from_response(&resp, params);
-    let detect_ms = detect_started.elapsed().as_secs_f64() * 1000.0;
-
-    ChessResult {
-        corners,
-        resp_ms,
-        detect_ms,
-    }
 }
 
 /// Compute corners starting from an 8-bit grayscale image.
@@ -67,6 +32,10 @@ pub fn find_corners_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -> 
 /// Useful if you want to reuse the response map for debugging or tuning. Honors
 /// relative vs absolute thresholds, enforces the configurable NMS radius, and
 /// rejects isolated responses via `min_cluster_size`.
+#[cfg_attr(
+    feature = "tracing",
+    instrument(level = "debug", skip(resp, params), fields(w = resp.w, h = resp.h))
+)]
 pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) -> Vec<Corner> {
     let w = resp.w;
     let h = resp.h;

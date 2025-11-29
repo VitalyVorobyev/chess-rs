@@ -17,16 +17,16 @@ pub mod pyramid;
 // Re-export a focused subset of core types for convenience. Consumers that
 // need lower-level primitives (rings, raw response functions, etc.) are
 // encouraged to depend on `chess-core` directly.
-pub use chess_core::detect::{ChessResult, Corner};
+pub use chess_core::detect::Corner;
 pub use chess_core::{ChessParams, ResponseMap};
 
 // High-level helpers on `image::GrayImage`.
-pub use crate::image::{chess_response_image, find_corners_image, find_corners_image_trace};
+pub use crate::image::{chess_response_image, find_corners_image};
 
 // Multiscale/coarse-to-fine API.
 pub use crate::multiscale::{
-    find_corners_coarse_to_fine_image, find_corners_coarse_to_fine_image_trace,
-    find_corners_multiscale_image, CoarseToFineParams, CoarseToFineResult, MultiscaleCorner,
+    find_corners_coarse_to_fine_image, find_corners_multiscale_image, CoarseToFineParams,
+    CoarseToFineResult, MultiscaleCorner,
 };
 
 // Pyramid utilities are re-exported from the crate root for ergonomic access.

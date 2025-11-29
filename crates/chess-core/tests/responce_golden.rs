@@ -1,4 +1,4 @@
-use chess_core::detect::{detect_corners_from_response, find_corners_u8_with_trace};
+use chess_core::detect::{detect_corners_from_response, find_corners_u8};
 #[cfg(feature = "simd")]
 use chess_core::response::chess_response_u8_scalar;
 use chess_core::response::{self, chess_response_u8, chess_response_u8_patch};
@@ -166,10 +166,8 @@ fn tracing_path_reports_elapsed_times() {
     let h = 24usize;
     let img = vec![0u8; w * h];
 
-    let res = find_corners_u8_with_trace(&img, w, h, &params);
-    assert!(res.resp_ms >= 0.0);
-    assert!(res.detect_ms >= 0.0);
-    assert!(res.corners.is_empty());
+    let corners = find_corners_u8(&img, w, h, &params);
+    assert!(corners.is_empty());
 }
 
 #[test]

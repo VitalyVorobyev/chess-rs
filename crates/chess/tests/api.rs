@@ -1,4 +1,4 @@
-use chess::{chess_response_image, find_corners_image, find_corners_image_trace, ChessParams};
+use chess::{chess_response_image, find_corners_image, ChessParams};
 use chess_core::response::chess_response_u8;
 use image::GrayImage;
 
@@ -35,9 +35,7 @@ fn corner_helpers_keep_behavior_in_sync() {
     let img = GrayImage::from_pixel(w, h, image::Luma([0u8]));
 
     let plain = find_corners_image(&img, &params);
-    let traced = find_corners_image_trace(&img, &params);
+    let corners = find_corners_image(&img, &params);
 
-    assert_eq!(plain.len(), traced.corners.len());
-    assert!(traced.resp_ms >= 0.0);
-    assert!(traced.detect_ms >= 0.0);
+    assert_eq!(plain.len(), corners.len());
 }
