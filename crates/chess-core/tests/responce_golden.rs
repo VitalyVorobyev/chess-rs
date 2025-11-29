@@ -1,5 +1,7 @@
 use chess_core::detect::{detect_corners_from_response, find_corners_u8_with_trace};
 use chess_core::response::{self, chess_response_u8, chess_response_u8_patch};
+#[cfg(feature = "simd")]
+use chess_core::response::chess_response_u8_scalar;
 
 use chess_core::ring::{ring_offsets, RING10, RING5};
 use chess_core::{ChessParams, ResponseMap};
