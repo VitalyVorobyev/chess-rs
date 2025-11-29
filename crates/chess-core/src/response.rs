@@ -176,12 +176,12 @@ pub fn chess_response_u8_patch(
 
         #[cfg(feature = "simd")]
         {
-            compute_row_range_simd(img, img_w, gy as i32, &ring, dst_row, row_gx0, row_gx1);
+            compute_row_range_simd(img, img_w, gy as i32, ring, dst_row, row_gx0, row_gx1);
         }
 
         #[cfg(not(feature = "simd"))]
         {
-            compute_row_range_scalar(img, img_w, gy as i32, &ring, dst_row, row_gx0, row_gx1);
+            compute_row_range_scalar(img, img_w, gy as i32, ring, dst_row, row_gx0, row_gx1);
         }
     }
 
@@ -216,12 +216,12 @@ fn compute_response_sequential(
 
         #[cfg(feature = "simd")]
         {
-            compute_row_range_simd(img, w, y as i32, &ring, dst_row, x0, x1);
+            compute_row_range_simd(img, w, y as i32, ring, dst_row, x0, x1);
         }
 
         #[cfg(not(feature = "simd"))]
         {
-            compute_row_range_scalar(img, w, y as i32, &ring, dst_row, x0, x1);
+            compute_row_range_scalar(img, w, y as i32, ring, dst_row, x0, x1);
         }
     }
 
@@ -248,7 +248,7 @@ fn compute_response_sequential_scalar(
     for y in y0..y1 {
         let row = &mut data[y * w..(y + 1) * w];
         let dst_row = &mut row[x0..x1];
-        compute_row_range_scalar(img, w, y as i32, &ring, dst_row, x0, x1);
+        compute_row_range_scalar(img, w, y as i32, ring, dst_row, x0, x1);
     }
 
     ResponseMap { w, h, data }

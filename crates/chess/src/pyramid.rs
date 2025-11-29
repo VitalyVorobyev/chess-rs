@@ -319,14 +319,14 @@ fn downsample_2x_box_parallel_simd(src: &GrayImage, dst: &mut GrayImage) {
 fn downsample_row_scalar(row0: &[u8], row1: &[u8], dst_row: &mut [u8]) {
     let dst_w = dst_row.len();
 
-    for x in 0..dst_w {
+    for (x, item) in dst_row.iter_mut().enumerate().take(dst_w) {
         let sx = x * 2;
         let p00 = row0[sx] as u16;
         let p01 = row0[sx + 1] as u16;
         let p10 = row1[sx] as u16;
         let p11 = row1[sx + 1] as u16;
         let sum = p00 + p01 + p10 + p11;
-        dst_row[x] = ((sum + 2) >> 2) as u8;
+        *item = ((sum + 2) >> 2) as u8;
     }
 }
 
