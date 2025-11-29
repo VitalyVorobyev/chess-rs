@@ -48,6 +48,14 @@ let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf, &mut buffe
 println!("coarse stage ran in {:.2} ms, refined {} corners", res.coarse_ms, res.corners.len());
 ```
 
+The multiscale path uses a coarse detector on the smallest pyramid level and
+refines each seed in a base-image ROI. The ROI radius is specified in
+coarse-level pixels and is automatically converted to a radius in base pixels,
+with a minimum margin derived from the ChESS detector’s own border logic. Both
+full-frame and ROI response computations honor the `rayon`/`simd` features so
+patch refinement benefits from the same SIMD and parallelism as the dense
+response path.
+
 ## Development
 
 - Run the workspace tests: `cargo test`

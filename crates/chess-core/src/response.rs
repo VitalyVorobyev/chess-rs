@@ -111,12 +111,15 @@ pub fn chess_response_u8_scalar(
 /// Compute the ChESS response only inside a rectangular ROI of the image.
 ///
 /// The ROI is given in image coordinates [x0, x1) × [y0, y1) via [`Roi`]. The
-/// returned ResponseMap has width (x1 - x0) and height (y1 - y0), with
+/// returned [`ResponseMap`] has width (x1 - x0) and height (y1 - y0), with
 /// coordinates relative to (x0, y0).
 ///
 /// Pixels where the ChESS ring would go out of bounds (w.r.t. the *full*
 /// image) are left at 0.0, and will be ignored by the detector because they
-/// lie inside the border margin.
+/// lie inside the border margin. Internally this reuses the same scalar,
+/// SIMD, and optional `rayon` row kernels as [`chess_response_u8`], so ROI
+/// refinement benefits from the same feature combinations as the full-frame
+/// response path.
 pub fn chess_response_u8_patch(
     img: &[u8],
     img_w: usize,
@@ -158,14 +161,43 @@ pub fn chess_response_u8_patch(
         if gy < gy0 || gy >= gy1 {
             continue;
         }
-        for px in 0..patch_w {
-            let gx = x0 + px;
-            if gx < gx0 || gx >= gx1 {
-                continue;
-            }
 
-            let resp = chess_response_at_u8(img, img_w, gx as i32, gy as i32, ring);
-            data[py * patch_w + px] = resp;
+        // Global x-range where the ring is valid on this row.
+        let row_gx0 = x0.max(gx0);
+        let row_gx1 = x1.min(gx1);
+        if row_gx0 >= row_gx1 {
+            continue;
+        }
+
+        let row = &mut data[py * patch_w..(py + 1) * patch_w];
+        let rel_start = row_gx0 - x0;
+        let rel_end = row_gx1 - x0;
+        let dst_row = &mut row[rel_start..rel_end];
+
+        #[cfg(feature = "simd")]
+        {
+            compute_row_range_simd(
+                img,
+                img_w,
+                gy as i32,
+                &ring,
+                dst_row,
+                row_gx0,
+                row_gx1,
+            );
+        }
+
+        #[cfg(not(feature = "simd"))]
+        {
+            compute_row_range_scalar(
+                img,
+                img_w,
+                gy as i32,
+                &ring,
+                dst_row,
+                row_gx0,
+                row_gx1,
+            );
         }
     }
 
@@ -194,21 +226,18 @@ fn compute_response_sequential(
     let x1 = w - r as usize;
     let y1 = h - r as usize;
 
-    #[cfg(feature = "simd")]
-    {
-        for y in y0..y1 {
-            let row = &mut data[y * w..(y + 1) * w];
-            compute_row(img, w, y as i32, &ring, row, x0, x1);
-        }
-    }
+    for y in y0..y1 {
+        let row = &mut data[y * w..(y + 1) * w];
+        let dst_row = &mut row[x0..x1];
 
-    #[cfg(not(feature = "simd"))]
-    {
-        for y in y0..y1 {
-            for x in x0..x1 {
-                let resp = chess_response_at_u8(img, w, x as i32, y as i32, ring);
-                data[y * w + x] = resp;
-            }
+        #[cfg(feature = "simd")]
+        {
+            compute_row_range_simd(img, w, y as i32, &ring, dst_row, x0, x1);
+        }
+
+        #[cfg(not(feature = "simd"))]
+        {
+            compute_row_range_scalar(img, w, y as i32, &ring, dst_row, x0, x1);
         }
     }
 
@@ -234,7 +263,8 @@ fn compute_response_sequential_scalar(
 
     for y in y0..y1 {
         let row = &mut data[y * w..(y + 1) * w];
-        compute_row_scalar(img, w, y as i32, ring, row, x0, x1);
+        let dst_row = &mut row[x0..x1];
+        compute_row_range_scalar(img, w, y as i32, &ring, dst_row, x0, x1);
     }
 
     ResponseMap { w, h, data }
@@ -259,17 +289,17 @@ fn compute_response_parallel(img: &[u8], w: usize, h: usize, params: &ChessParam
         if y_i < y0 as i32 || y_i >= y1 as i32 {
             return;
         }
+
+        let dst_row = &mut row[x0..x1];
+
         #[cfg(feature = "simd")]
         {
-            compute_row(img, w, y_i, &ring, row, x0, x1);
+            compute_row_range_simd(img, w, y_i, &ring, dst_row, x0, x1);
         }
 
         #[cfg(not(feature = "simd"))]
         {
-            for x in x0..x1 {
-                let resp = chess_response_at_u8(img, w, x as i32, y_i, &ring);
-                row[x] = resp;
-            }
+            compute_row_range_scalar(img, w, y_i, &ring, dst_row, x0, x1);
         }
     });
 
@@ -338,50 +368,29 @@ fn chess_response_at_u8(img: &[u8], w: usize, x: i32, y: i32, ring: &[(i32, i32)
     (sr as f32) - (dr as f32) - 16.0 * mr
 }
 
-#[cfg(feature = "simd")]
-fn compute_row(
+fn compute_row_range_scalar(
     img: &[u8],
     w: usize,
     y: i32,
     ring: &[(i32, i32); 16],
-    row: &mut [f32],
-    x0: usize,
-    x1: usize,
+    dst_row: &mut [f32],
+    x_start: usize,
+    x_end: usize,
 ) {
-    #[cfg(feature = "simd")]
-    {
-        compute_row_simd(img, w, y, ring, row, x0, x1);
-        return;
-    }
-
-    // fallback
-    #[cfg(not(feature = "simd"))]
-    compute_row_scalar(img, w, y, ring, row, x0, x1);
-}
-
-fn compute_row_scalar(
-    img: &[u8],
-    w: usize,
-    y: i32,
-    ring: &[(i32, i32); 16],
-    row: &mut [f32],
-    x0: usize,
-    x1: usize,
-) {
-    for (x, item) in row.iter_mut().enumerate().take(x1).skip(x0) {
-        *item = chess_response_at_u8(img, w, x as i32, y, ring);
+    for (offset, x) in (x_start..x_end).enumerate() {
+        dst_row[offset] = chess_response_at_u8(img, w, x as i32, y, ring);
     }
 }
 
 #[cfg(feature = "simd")]
-fn compute_row_simd(
+fn compute_row_range_simd(
     img: &[u8],
     w: usize,
     y: i32,
     ring: &[(i32, i32); 16],
-    row: &mut [f32],
-    x0: usize,
-    x1: usize,
+    dst_row: &mut [f32],
+    x_start: usize,
+    x_end: usize,
 ) {
     let y_usize = y as usize;
 
@@ -393,9 +402,9 @@ fn compute_row_simd(
         ring_bases[k] = (yy * w) as isize + dx as isize;
     }
 
-    let mut x = x0;
+    let mut x = x_start;
 
-    while x + LANES <= x1 {
+    while x + LANES <= x_end {
         // Gather ring samples for LANES pixels starting at x
         let mut s: [I16s; 16] = [I16s::splat(0); 16];
 
@@ -437,6 +446,7 @@ fn compute_row_simd(
         // Per-lane local mean + final response
         for lane in 0..LANES {
             let xx = x + lane;
+            let px = (xx - x_start) as usize;
 
             // center + 4-neighborhood (scalar) at base resolution
             let c = img[y_usize * w + xx] as f32;
@@ -449,16 +459,17 @@ fn compute_row_simd(
             let mu_l = (c + n + s0 + e + w0) / 5.0;
             let mr = (mu_n - mu_l).abs();
 
-            row[xx] = sr_arr[lane] - dr_arr[lane] - 16.0 * mr;
+            dst_row[px] = sr_arr[lane] - dr_arr[lane] - 16.0 * mr;
         }
 
         x += LANES;
     }
 
     // Tail: scalar for remaining pixels
-    while x < x1 {
+    while x < x_end {
+        let px = x - x_start;
         let resp = chess_response_at_u8(img, w, x as i32, y, ring);
-        row[x] = resp;
+        dst_row[px] = resp;
         x += 1;
     }
 }

@@ -61,7 +61,10 @@ pub struct MultiscaleCorner {
 /// Parameters controlling coarse-to-fine refinement on an image pyramid.
 ///
 /// - `pyramid`: how the pyramid is built (levels, scale factor, min size).
-/// - `roi_radius`: half-size of the refinement ROI (in base pixels).
+/// - `roi_radius`: half-size of the refinement ROI, expressed in *coarse-level
+///   pixels* (i.e., the level used for seeding). The implementation converts
+///   this to a radius in base-image pixels based on the coarse level's scale
+///   and enforces a minimum margin derived from the detector's own border.
 /// - `merge_radius`: radius used to merge duplicate refined corners.
 pub struct CoarseToFineParams {
     pub pyramid: PyramidParams,
@@ -88,7 +91,9 @@ impl Default for CoarseToFineParams {
     fn default() -> Self {
         Self {
             pyramid: PyramidParams::default(),
-            // smaller ROI (2*12+1 = 25px window) around coarse prediction
+            // smaller ROI (2*12+1 = 25px window) *at the coarse level* around
+            // the prediction. At the base level this is upscaled according to
+            // the coarse pyramid scale.
             roi_radius: 12,
             // merge duplicates within ~2 pixels
             merge_radius: 2.0,
@@ -237,7 +242,12 @@ pub fn find_corners_coarse_to_fine_image_trace(
     // Require a bit of breathing room inside the image
     let safe_margin = border + 1;
 
-    let roi_r = cf.roi_radius as i32;
+    // Convert the user-provided ROI radius (expressed in coarse-level pixels)
+    // to base-image pixels. Enforce a minimum radius that leaves interior room
+    // beyond the detector's own border margin so refinement can run.
+    let roi_r_base = (cf.roi_radius as f32 / coarse_lvl.scale).ceil() as i32;
+    let min_roi_r = border + 2;
+    let roi_r = roi_r_base.max(min_roi_r);
 
     let refine_started = Instant::now();
 
