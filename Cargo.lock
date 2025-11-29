@@ -262,15 +262,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chess-gen-golden"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chess-core",
- "image",
-]
-
-[[package]]
 name = "clap"
 version = "4.5.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
