@@ -40,7 +40,7 @@ Need timings for profiling? Swap in `find_corners_image_trace` to get per-stage 
 ### Multiscale (coarse-to-fine)
 
 ```rust
-use chess::{find_corners_coarse_to_fine_image_trace, ChessParams, CoarseToFineParams, PyramidBuffers};
+use chess::{find_corners_coarse_to_fine_image, ChessParams, CoarseToFineParams, PyramidBuffers};
 use image::io::Reader as ImageReader;
 
 let img = ImageReader::open("board.png")?.decode()?.to_luma8();
@@ -49,7 +49,7 @@ let cf = CoarseToFineParams::default();
 let mut buffers = PyramidBuffers::new();
 buffers.prepare_for_image(&img, &cf.pyramid);
 
-let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf, &mut buffers);
+let res = find_corners_coarse_to_fine_image(&img, &params, &cf, &mut buffers);
 println!("coarse stage ran in {:.2} ms, refined {} corners", res.coarse_ms, res.corners.len());
 ```
 

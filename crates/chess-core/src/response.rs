@@ -88,7 +88,10 @@ pub struct Roi {
 /// All feature combinations produce the same output values (within a
 /// small tolerance for floating‑point rounding), and differ only in
 /// performance characteristics.
-#[cfg_attr(feature = "tracing", instrument(level = "debug", skip(img, params), fields(w, h)))]
+#[cfg_attr(
+    feature = "tracing",
+    instrument(level = "debug", skip(img, params), fields(w, h))
+)]
 pub fn chess_response_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -> ResponseMap {
     // rayon path compiled only when feature is enabled
     #[cfg(feature = "rayon")]

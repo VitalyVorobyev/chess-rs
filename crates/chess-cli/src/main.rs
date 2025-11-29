@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use chess_cli::commands::{load_config, run_detection, DetectionMode};
 use std::str::FromStr;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[derive(Parser)]
 #[command(author, version, about = "ChESS detector CLI", long_about = None)]
@@ -137,6 +138,7 @@ fn init_tracing(json: bool) {
     if json {
         let _ = fmt()
             .with_env_filter(filter)
+            .with_span_events(FmtSpan::CLOSE)
             .json()
             .flatten_event(true)
             .finish()
@@ -144,6 +146,7 @@ fn init_tracing(json: bool) {
     } else {
         let _ = fmt()
             .with_env_filter(filter)
+            .with_span_events(FmtSpan::CLOSE)
             .with_timer(fmt::time::Uptime::default())
             .finish()
             .try_init();

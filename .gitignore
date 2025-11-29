@@ -3,3 +3,4 @@ testdata
 .DS_Store
 config/config.json
 output.json
+trace.json

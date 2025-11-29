@@ -29,14 +29,3 @@ pub fn find_corners_image(img: &GrayImage, params: &ChessParams) -> Vec<detect::
         params,
     )
 }
-
-/// Detect subpixel corners from an `image::GrayImage` and return timing stats.
-#[inline]
-pub fn find_corners_image_trace(img: &GrayImage, params: &ChessParams) -> detect::ChessResult {
-    detect::find_corners_u8_with_trace(
-        img.as_raw(),
-        img.width() as usize,
-        img.height() as usize,
-        params,
-    )
-}
