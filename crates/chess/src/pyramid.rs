@@ -188,15 +188,21 @@ pub fn build_pyramid<'a>(
 /// Uses a SIMD specialization when the `simd` feature is enabled.
 #[inline]
 fn downsample_2x_box(src: &GrayImage, dst: &mut GrayImage) {
-    #[cfg(feature = "simd")]
-    downsample_2x_box_simd(src, dst);
+    #[cfg(all(feature = "rayon", feature = "simd"))]
+    return downsample_2x_box_parallel_simd(src, dst);
 
-    #[cfg(not(feature = "simd"))]
-    downsample_2x_box_scalar(src, dst);
+    #[cfg(all(feature = "rayon", not(feature = "simd")))]
+    return downsample_2x_box_parallel_scalar(src, dst);
+
+    #[cfg(all(not(feature = "rayon"), feature = "simd"))]
+    return downsample_2x_box_simd(src, dst);
+
+    #[cfg(all(not(feature = "rayon"), not(feature = "simd")))]
+    return downsample_2x_box_scalar(src, dst);
 }
 
 #[inline]
-#[cfg(not(feature = "simd"))]
+#[cfg(all(not(feature = "simd"), not(feature = "rayon")))]
 fn downsample_2x_box_scalar(src: &GrayImage, dst: &mut GrayImage) {
     debug_assert_eq!(src.width() / 2, dst.width());
     debug_assert_eq!(src.height() / 2, dst.height());
@@ -212,23 +218,16 @@ fn downsample_2x_box_scalar(src: &GrayImage, dst: &mut GrayImage) {
         let row0 = (y * 2) * src_w;
         let row1 = row0 + src_w;
 
-        for x in 0..dst_w {
-            let sx = x * 2;
-            let p00 = src_pixels[row0 + sx] as u16;
-            let p01 = src_pixels[row0 + sx + 1] as u16;
-            let p10 = src_pixels[row1 + sx] as u16;
-            let p11 = src_pixels[row1 + sx + 1] as u16;
-            let sum = p00 + p01 + p10 + p11;
-            dst_pixels[y * dst_w + x] = ((sum + 2) >> 2) as u8;
-        }
+        downsample_row_scalar(
+            &src_pixels[row0..row0 + src_w],
+            &src_pixels[row1..row1 + src_w],
+            &mut dst_pixels[y * dst_w..(y + 1) * dst_w],
+        );
     }
 }
 
-#[cfg(feature = "simd")]
+#[cfg(all(not(feature = "rayon"), feature = "simd"))]
 fn downsample_2x_box_simd(src: &GrayImage, dst: &mut GrayImage) {
-    use std::simd::num::SimdUint;
-    use std::simd::{u16x16, u8x16};
-
     debug_assert_eq!(src.width() / 2, dst.width());
     debug_assert_eq!(src.height() / 2, dst.height());
 
@@ -242,8 +241,6 @@ fn downsample_2x_box_simd(src: &GrayImage, dst: &mut GrayImage) {
     let src_stride = src_w as usize;
     let dst_stride = dst_w as usize;
 
-    const LANES: usize = 16;
-
     for y_out in 0..dst_h as usize {
         let y0 = 2 * y_out;
         let y1 = y0 + 1;
@@ -253,48 +250,131 @@ fn downsample_2x_box_simd(src: &GrayImage, dst: &mut GrayImage) {
 
         let dst_row = &mut dst_buf[y_out * dst_stride..(y_out + 1) * dst_stride];
 
-        let mut x_out = 0usize;
-        while x_out + LANES <= dst_w as usize {
-            let mut p00 = [0u8; LANES];
-            let mut p01 = [0u8; LANES];
-            let mut p10 = [0u8; LANES];
-            let mut p11 = [0u8; LANES];
+        downsample_row_simd(row0, row1, dst_row);
+    }
+}
 
-            for lane in 0..LANES {
-                let x = x_out + lane;
-                let sx = 2 * x;
-                p00[lane] = row0[sx];
-                p01[lane] = row0[sx + 1];
-                p10[lane] = row1[sx];
-                p11[lane] = row1[sx + 1];
-            }
+#[cfg(all(feature = "rayon", not(feature = "simd")))]
+fn downsample_2x_box_parallel_scalar(src: &GrayImage, dst: &mut GrayImage) {
+    use rayon::prelude::*;
 
-            let a0 = u8x16::from_array(p00);
-            let a1 = u8x16::from_array(p01);
-            let b0 = u8x16::from_array(p10);
-            let b1 = u8x16::from_array(p11);
+    debug_assert_eq!(src.width() / 2, dst.width());
+    debug_assert_eq!(src.height() / 2, dst.height());
 
-            let sum: u16x16 =
-                a0.cast::<u16>() + a1.cast::<u16>() + b0.cast::<u16>() + b1.cast::<u16>();
+    let src_w = src.width();
+    let dst_w = src_w / 2;
 
-            let avg = (sum + u16x16::splat(2)) >> 2;
-            let out: u8x16 = avg.cast();
+    let src_buf = src.as_raw();
+    let dst_buf = dst.as_mut();
 
-            out.copy_to_slice(&mut dst_row[x_out..x_out + LANES]);
-            x_out += LANES;
-        }
+    let src_stride = src_w as usize;
+    let dst_stride = dst_w as usize;
 
-        // scalar tail
-        for x in x_out..dst_w as usize {
+    dst_buf
+        .par_chunks_mut(dst_stride)
+        .enumerate()
+        .for_each(|(y_out, dst_row)| {
+            let y0 = 2 * y_out;
+            let y1 = y0 + 1;
+
+            let row0 = &src_buf[y0 * src_stride..(y0 + 1) * src_stride];
+            let row1 = &src_buf[y1 * src_stride..(y1 + 1) * src_stride];
+
+            downsample_row_scalar(row0, row1, dst_row);
+        });
+}
+
+#[cfg(all(feature = "rayon", feature = "simd"))]
+fn downsample_2x_box_parallel_simd(src: &GrayImage, dst: &mut GrayImage) {
+    use rayon::prelude::*;
+
+    debug_assert_eq!(src.width() / 2, dst.width());
+    debug_assert_eq!(src.height() / 2, dst.height());
+
+    let src_w = src.width();
+    let dst_w = src_w / 2;
+
+    let src_buf = src.as_raw();
+    let dst_buf = dst.as_mut();
+
+    let src_stride = src_w as usize;
+    let dst_stride = dst_w as usize;
+
+    dst_buf
+        .par_chunks_mut(dst_stride)
+        .enumerate()
+        .for_each(|(y_out, dst_row)| {
+            let y0 = 2 * y_out;
+            let y1 = y0 + 1;
+
+            let row0 = &src_buf[y0 * src_stride..(y0 + 1) * src_stride];
+            let row1 = &src_buf[y1 * src_stride..(y1 + 1) * src_stride];
+
+            downsample_row_simd(row0, row1, dst_row);
+        });
+}
+
+#[inline]
+#[cfg_attr(feature = "simd", allow(dead_code))]
+fn downsample_row_scalar(row0: &[u8], row1: &[u8], dst_row: &mut [u8]) {
+    let dst_w = dst_row.len();
+
+    for x in 0..dst_w {
+        let sx = x * 2;
+        let p00 = row0[sx] as u16;
+        let p01 = row0[sx + 1] as u16;
+        let p10 = row1[sx] as u16;
+        let p11 = row1[sx + 1] as u16;
+        let sum = p00 + p01 + p10 + p11;
+        dst_row[x] = ((sum + 2) >> 2) as u8;
+    }
+}
+
+#[cfg(feature = "simd")]
+fn downsample_row_simd(row0: &[u8], row1: &[u8], dst_row: &mut [u8]) {
+    use std::simd::num::SimdUint;
+    use std::simd::{u16x16, u8x16};
+
+    const LANES: usize = 16;
+    let mut x_out = 0usize;
+
+    while x_out + LANES <= dst_row.len() {
+        let mut p00 = [0u8; LANES];
+        let mut p01 = [0u8; LANES];
+        let mut p10 = [0u8; LANES];
+        let mut p11 = [0u8; LANES];
+
+        for lane in 0..LANES {
+            let x = x_out + lane;
             let sx = 2 * x;
-            let p00 = row0[sx];
-            let p01 = row0[sx + 1];
-            let p10 = row1[sx];
-            let p11 = row1[sx + 1];
-
-            let sum = p00 as u16 + p01 as u16 + p10 as u16 + p11 as u16;
-            dst_row[x] = ((sum + 2) >> 2) as u8;
+            p00[lane] = row0[sx];
+            p01[lane] = row0[sx + 1];
+            p10[lane] = row1[sx];
+            p11[lane] = row1[sx + 1];
         }
+
+        let a0 = u8x16::from_array(p00);
+        let a1 = u8x16::from_array(p01);
+        let b0 = u8x16::from_array(p10);
+        let b1 = u8x16::from_array(p11);
+
+        let sum: u16x16 = a0.cast::<u16>() + a1.cast::<u16>() + b0.cast::<u16>() + b1.cast::<u16>();
+
+        let avg = (sum + u16x16::splat(2)) >> 2;
+        let out: u8x16 = avg.cast();
+
+        out.copy_to_slice(&mut dst_row[x_out..x_out + LANES]);
+        x_out += LANES;
+    }
+
+    for x in x_out..dst_row.len() {
+        let sx = 2 * x;
+        let p00 = row0[sx] as u16;
+        let p01 = row0[sx + 1] as u16;
+        let p10 = row1[sx] as u16;
+        let p11 = row1[sx + 1] as u16;
+        let sum = p00 + p01 + p10 + p11;
+        dst_row[x] = ((sum + 2) >> 2) as u8;
     }
 }
 
