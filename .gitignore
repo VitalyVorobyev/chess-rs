@@ -1,2 +1,4 @@
 target
 testdata
+.DS_Store
+config

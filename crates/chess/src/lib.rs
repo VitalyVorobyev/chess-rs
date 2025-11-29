@@ -1,40 +1,28 @@
+#![cfg_attr(feature = "simd", feature(portable_simd))]
 //! Ergonomic wrappers over `chess-core` that accept `image::GrayImage` inputs.
+//!
+//! This crate is organized into a few focused modules:
+//! - [`image`] – single-scale helpers on `image::GrayImage`.
+//! - [`multiscale`] – pyramid-based multiscale and coarse-to-fine detection.
+//! - [`pyramid`] – reusable buffers and downsampling for image pyramids.
+//! - [`logger`] – a simple `log` implementation used by examples.
+
+pub mod image;
+pub mod logger;
+pub mod multiscale;
+pub mod pyramid;
+
+// Re-export core types for convenience.
 pub use chess_core::*;
 
-use image::GrayImage;
+// High-level helpers on `image::GrayImage`.
+pub use crate::image::{chess_response_image, find_corners_image, find_corners_image_trace};
 
-/// Compute ChESS response map for an `image::GrayImage`.
-pub fn chess_response_image(img: &GrayImage, params: &ChessParams) -> ResponseMap {
-    chess_core::response::chess_response_u8(
-        img.as_raw(),
-        img.width() as usize,
-        img.height() as usize,
-        params,
-    )
-}
+// Multiscale/coarse-to-fine API.
+pub use crate::multiscale::{
+    find_corners_coarse_to_fine_image, find_corners_coarse_to_fine_image_trace,
+    find_corners_multiscale_image, CoarseToFineParams, CoarseToFineResult, MultiscaleCorner,
+};
 
-/// Detect subpixel corners from an `image::GrayImage`.
-pub fn find_corners_image(
-    img: &GrayImage,
-    params: &ChessParams,
-) -> Vec<chess_core::detect::Corner> {
-    chess_core::detect::find_corners_u8(
-        img.as_raw(),
-        img.width() as usize,
-        img.height() as usize,
-        params,
-    )
-}
-
-/// Detect subpixel corners from an `image::GrayImage` and return timing stats.
-pub fn find_corners_image_trace(
-    img: &GrayImage,
-    params: &ChessParams,
-) -> chess_core::detect::ChessResult {
-    chess_core::detect::find_corners_u8_with_trace(
-        img.as_raw(),
-        img.width() as usize,
-        img.height() as usize,
-        params,
-    )
-}
+// Pyramid utilities are re-exported from the crate root for ergonomic access.
+pub use crate::pyramid::{build_pyramid, Pyramid, PyramidBuffers, PyramidLevel, PyramidParams};

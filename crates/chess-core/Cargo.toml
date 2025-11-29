@@ -10,14 +10,14 @@ repository.workspace = true
 default = ["std"]
 std = []
 rayon = ["dep:rayon"]
-# phase D:
-# simd = []
+simd = []
 # preblur = []
 # orientation = []
 # pyramid = []
 
 [dependencies]
 rayon = { version = "1.10", optional=true}
+log = "0.4"
 
 [dev-dependencies]
 image = "0.25"

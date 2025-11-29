@@ -2,7 +2,10 @@ name: ci
 
 on:
   push:
+    branches: [ main ]
+    tags: [ '*' ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   test:
@@ -14,16 +17,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@master
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
-          components: rustfmt, clippy
+
+      - name: Add rustfmt and clippy (stable only)
+        if: matrix.toolchain == 'stable'
+        run: rustup component add rustfmt clippy
 
       - name: fmt
+        if: matrix.toolchain == 'stable'
         run: cargo fmt --all --check
 
       - name: clippy
+        if: matrix.toolchain == 'stable'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: test
+      - name: test (default features)
         run: cargo test --workspace
+
+      - name: test chess-core feature matrix (no simd)
+        if: matrix.toolchain == 'stable'
+        run: |
+          cargo test -p chess-core --tests
+          cargo test -p chess-core --tests --features rayon
+
+      - name: test chess-core feature matrix (simd)
+        if: matrix.toolchain == 'nightly'
+        run: |
+          cargo test -p chess-core --tests --no-default-features --features "std,simd"
+          cargo test -p chess-core --tests --no-default-features --features "std,rayon,simd"
+
+      - name: test chess facade feature matrix (no simd)
+        if: matrix.toolchain == 'stable'
+        run: |
+          cargo test -p chess --lib --no-default-features
+          cargo test -p chess --lib --no-default-features --features rayon
+
+      - name: test chess facade feature matrix (simd)
+        if: matrix.toolchain == 'nightly'
+        run: |
+          cargo test -p chess --lib --no-default-features --features simd
+          cargo test -p chess --lib --no-default-features --features "simd,rayon"

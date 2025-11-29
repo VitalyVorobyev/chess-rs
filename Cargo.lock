@@ -183,6 +183,8 @@ dependencies = [
  "anyhow",
  "chess-core",
  "image",
+ "log",
+ "rayon",
  "serde",
  "serde_json",
 ]
@@ -192,6 +194,7 @@ name = "chess-core"
 version = "0.1.0"
 dependencies = [
  "image",
+ "log",
  "rayon",
 ]
 
