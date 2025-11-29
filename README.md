@@ -11,7 +11,8 @@ ChESS is a classical, ID-free detector for chessboard **X-junction** corners. Th
 - Two crates:
   - `chess-core`: lean core (std optional) meant to stay SIMD/parallel-friendly.
   - `chess`: ergonomic facade that accepts `image::GrayImage`.
-- Example utility `dump_corners` that exports detections as JSON/PNG overlays.
+- Multiscale coarse-to-fine helpers with reusable pyramid buffers.
+- Example utilities that export detections as JSON/PNG overlays.
 
 ## Quick start
 
@@ -31,6 +32,22 @@ println!("found {} corners", corners.len());
 
 Need timings for profiling? Swap in `find_corners_image_trace` to get per-stage milliseconds.
 
+### Multiscale (coarse-to-fine)
+
+```rust
+use chess::{find_corners_coarse_to_fine_image_trace, ChessParams, CoarseToFineParams, PyramidBuffers};
+use image::io::Reader as ImageReader;
+
+let img = ImageReader::open("board.png")?.decode()?.to_luma8();
+let params = ChessParams::default();
+let cf = CoarseToFineParams::default();
+let mut buffers = PyramidBuffers::new();
+buffers.prepare_for_image(&img, &cf.pyramid);
+
+let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf, &mut buffers);
+println!("coarse stage ran in {:.2} ms, refined {} corners", res.coarse_ms, res.corners.len());
+```
+
 ## Development
 
 - Run the workspace tests: `cargo test`
@@ -42,7 +59,9 @@ Need timings for profiling? Swap in `find_corners_image_trace` to get per-stage 
 
 Implemented: response kernel, ring tables, NMS + thresholding + cluster filter, 5x5 subpixel refinement, image helpers, data-free unit tests.
 
-Planned: SIMD acceleration, multi-scale pyramid, CLI packaging.
+Implemented (multiscale): pyramid builder with reusable buffers and coarse-to-fine corner refinement path.
+
+Planned: SIMD acceleration, CLI packaging.
 
 ## License
 

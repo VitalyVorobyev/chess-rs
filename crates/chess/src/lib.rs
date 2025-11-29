@@ -10,7 +10,7 @@ pub use chess_core::*;
 use rayon::prelude::*;
 use std::time::Instant;
 
-pub use crate::pyramid::{build_pyramid, Pyramid, PyramidLevel, PyramidParams};
+pub use crate::pyramid::{build_pyramid, Pyramid, PyramidBuffers, PyramidLevel, PyramidParams};
 
 use image::GrayImage;
 
@@ -100,25 +100,28 @@ impl Default for CoarseToFineParams {
 /// Coordinates are rescaled back to the base image so consumers can treat the
 /// output as a single set. Corners closer than `2` pixels are merged with
 /// simple strength-based suppression.
+/// Pass a persistent `PyramidBuffers` to avoid per-call allocations.
 ///
 /// # Example
 /// ```rust
-/// use chess::{find_corners_multiscale_image, ChessParams, PyramidParams};
+/// use chess::{find_corners_multiscale_image, ChessParams, PyramidBuffers, PyramidParams};
 /// use image::GrayImage;
 ///
 /// let img = GrayImage::from_pixel(64, 64, image::Luma([0u8]));
 /// let params = ChessParams::default();
 /// let pyramid = PyramidParams::default();
+/// let mut buffers = PyramidBuffers::new();
 ///
-/// let corners = find_corners_multiscale_image(&img, &params, &pyramid);
+/// let corners = find_corners_multiscale_image(&img, &params, &pyramid, &mut buffers);
 /// assert!(corners.is_empty());
 /// ```
 pub fn find_corners_multiscale_image(
     img: &image::GrayImage,
     p: &ChessParams,
     py: &PyramidParams,
+    buffers: &mut PyramidBuffers,
 ) -> Vec<MultiscaleCorner> {
-    let pyramid = build_pyramid(img, py);
+    let pyramid = build_pyramid(img, py, buffers);
 
     let mut all = Vec::new();
 
@@ -154,13 +157,15 @@ pub fn find_corners_multiscale_image(
 ///
 /// This trades a small amount of complexity for a significant speed-up on
 /// large images, since the dense response is never computed for the full
-/// base-resolution frame.
+/// base-resolution frame. Pass a persistent `PyramidBuffers` to reuse memory
+/// across frames.
 pub fn find_corners_coarse_to_fine_image(
     img: &image::GrayImage,
     params: &ChessParams,
     cf: &CoarseToFineParams,
+    buffers: &mut PyramidBuffers,
 ) -> Vec<MultiscaleCorner> {
-    find_corners_coarse_to_fine_image_trace(img, params, cf).corners
+    find_corners_coarse_to_fine_image_trace(img, params, cf, buffers).corners
 }
 
 /// Coarse-to-fine corner detection with timing stats.
@@ -172,9 +177,10 @@ pub fn find_corners_coarse_to_fine_image_trace(
     img: &image::GrayImage,
     params: &ChessParams,
     cf: &CoarseToFineParams,
+    buffers: &mut PyramidBuffers,
 ) -> CoarseToFineResult {
     let build_started = Instant::now();
-    let pyramid = build_pyramid(img, &cf.pyramid);
+    let pyramid = build_pyramid(img, &cf.pyramid, buffers);
     let build_ms = build_started.elapsed().as_secs_f64() * 1000.0;
     if pyramid.levels.is_empty() {
         return CoarseToFineResult {
@@ -416,7 +422,8 @@ mod tests {
         let img = GrayImage::from_pixel(32, 32, Luma([0u8]));
         let params = ChessParams::default();
         let pyramid = PyramidParams::default();
-        let res = find_corners_multiscale_image(&img, &params, &pyramid);
+        let mut buffers = PyramidBuffers::new();
+        let res = find_corners_multiscale_image(&img, &params, &pyramid, &mut buffers);
         assert!(res.is_empty());
     }
 
@@ -425,7 +432,8 @@ mod tests {
         let img = GrayImage::from_pixel(32, 32, Luma([0u8]));
         let params = ChessParams::default();
         let cf = CoarseToFineParams::default();
-        let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf);
+        let mut buffers = PyramidBuffers::new();
+        let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf, &mut buffers);
         assert!(res.build_ms >= 0.0);
         assert!(res.coarse_ms >= 0.0);
         assert!(res.refine_ms >= 0.0);

@@ -1,10 +1,12 @@
 use anyhow::{anyhow, Context};
-use chess::{find_corners_coarse_to_fine_image_trace, ChessParams, CoarseToFineParams};
+use chess::{
+    find_corners_coarse_to_fine_image_trace, ChessParams, CoarseToFineParams, PyramidBuffers,
+};
 use image::{ImageBuffer, ImageReader, Luma};
 use log::{info, LevelFilter};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use std::{fs::File, io::Write, path::Path, path::PathBuf};
+use std::{fs::File, io::Write, path::Path, path::PathBuf, time::Instant};
 
 #[derive(Serialize)]
 struct CornerOut {
@@ -22,6 +24,7 @@ struct CornerDump {
     min_size: u32,
     roi_radius: u32,
     merge_radius: f32,
+    alloc_ms: f64,
     build_ms: f64,
     coarse_ms: f64,
     refine_ms: f64,
@@ -138,9 +141,18 @@ fn main() -> anyhow::Result<()> {
 
     let img = ImageReader::open(&input)?.decode()?.to_luma8();
     info!("Image size: {} x {}", img.width(), img.height());
+    let mut buffers = PyramidBuffers::with_capacity(cf.pyramid.num_levels);
+    let alloc_started = Instant::now();
+    let prepared_levels = buffers.prepare_for_image(&img, &cf.pyramid);
+    let total_levels = prepared_levels + 1;
+    let alloc_ms = alloc_started.elapsed().as_secs_f64() * 1000.0;
+    info!(
+        "Prepared {} downsample buffers ({} total levels) in {:5.2} ms",
+        prepared_levels, total_levels, alloc_ms
+    );
     let params = ChessParams::default();
 
-    let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf);
+    let res = find_corners_coarse_to_fine_image_trace(&img, &params, &cf, &mut buffers);
 
     info!(
         "Detected {} corners, coarsest size: {} x {}",
@@ -148,10 +160,11 @@ fn main() -> anyhow::Result<()> {
         res.coarse_cols,
         res.coarse_rows
     );
-    info!("pyramid: {:5.2} ms", res.build_ms);
-    info!(" coarse: {:5.2} ms", res.coarse_ms);
-    info!(" refine: {:5.2} ms", res.refine_ms);
-    info!("  merge: {:5.2} ms", res.merge_ms);
+    info!("pyr alloc: {:5.2} ms", alloc_ms);
+    info!("pyr build: {:5.2} ms", res.build_ms);
+    info!("   coarse: {:5.2} ms", res.coarse_ms);
+    info!("   refine: {:5.2} ms", res.refine_ms);
+    info!("    merge: {:5.2} ms", res.merge_ms);
 
     let json_out = input.with_extension("multiscale.corners.json");
     let dump = CornerDump {
@@ -162,6 +175,7 @@ fn main() -> anyhow::Result<()> {
         min_size: cf.pyramid.min_size,
         roi_radius: cf.roi_radius,
         merge_radius: cf.merge_radius,
+        alloc_ms,
         build_ms: res.build_ms,
         coarse_ms: res.coarse_ms,
         refine_ms: res.refine_ms,
