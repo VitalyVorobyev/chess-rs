@@ -61,7 +61,7 @@ impl CoarseToFineParams {
         fields(levels = cfg.multiscale.pyramid.num_levels, min_size = cfg.multiscale.pyramid.min_size)
     )
 )]
-pub fn find_chess_corners(
+pub fn find_chess_corners_buff(
     base: ImageView<'_>,
     cfg: &ChessConfig,
     buffers: &mut PyramidBuffers,
@@ -334,7 +334,7 @@ mod tests {
         let img = ImageBuffer::new(32, 32);
         let mut buffers = PyramidBuffers::new();
         let cfg = ChessConfig::default();
-        let res = find_chess_corners(img.as_view(), &cfg, &mut buffers);
+        let res = find_chess_corners_buff(img.as_view(), &cfg, &mut buffers);
         assert!(res.corners.is_empty());
     }
 }

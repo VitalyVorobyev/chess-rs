@@ -236,7 +236,7 @@ fn downsample_2x_box(src: ImageView<'_>, dst: &mut ImageBuffer) {
 }
 
 #[inline]
-#[cfg(all(not(feature = "simd"), not(feature = "rayon")))]
+#[cfg(not(feature = "rayon"))]
 fn downsample_2x_box_scalar(src: ImageView<'_>, dst: &mut ImageBuffer) {
     debug_assert_eq!(src.width / 2, dst.width);
     debug_assert_eq!(src.height / 2, dst.height);
@@ -263,7 +263,6 @@ fn downsample_2x_box_simd(src: ImageView<'_>, dst: &mut ImageBuffer) {
     debug_assert_eq!(src.height / 2, dst.height);
 
     let src_w = src.width as usize;
-    let src_h = src.height as usize;
     let dst_w = dst.width as usize;
     let dst_h = dst.height as usize;
 

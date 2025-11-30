@@ -21,7 +21,7 @@ pub mod image;
 pub use image::find_chess_corners_image;
 
 // Multiscale/coarse-to-fine API types.
-pub use crate::multiscale::{CoarseToFineParams, CoarseToFineResult};
+pub use crate::multiscale::{find_chess_corners_buff, CoarseToFineParams, CoarseToFineResult};
 
 /// Unified detector configuration combining response/detector params and
 /// multiscale/pyramid tuning.
@@ -52,7 +52,7 @@ impl ChessConfig {
 /// Detect chessboard corners from a raw grayscale image buffer.
 ///
 /// The `img` slice must be `width * height` bytes in row-major order.
-pub fn find_chess_corners_u8(
+pub fn find_chess_corners(
     img: &[u8],
     width: u32,
     height: u32,
@@ -61,5 +61,5 @@ pub fn find_chess_corners_u8(
     let view = pyramid::ImageView::from_u8_slice(width, height, img)
         .expect("image dimensions must match buffer length");
     let mut buffers = pyramid::PyramidBuffers::with_capacity(cfg.multiscale.pyramid.num_levels);
-    multiscale::find_chess_corners(view, cfg, &mut buffers)
+    multiscale::find_chess_corners_buff(view, cfg, &mut buffers)
 }
