@@ -6,7 +6,7 @@
 
 use anyhow::{Context, Result};
 use chess_corners::{
-    image::find_chess_corners_image, multiscale::find_chess_corners, pyramid::ImageView,
+    find_chess_corners_image, find_chess_corners, ImageView,
     ChessParams, CoarseToFineParams, PyramidBuffers,
 };
 use image::{

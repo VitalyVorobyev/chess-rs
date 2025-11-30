@@ -6,8 +6,8 @@
 //! - [`pyramid`] – minimal u8 buffers and downsampling for pyramids.
 //! - optional `image` helpers for `image::GrayImage`.
 
-pub mod multiscale;
-pub mod pyramid;
+mod multiscale;
+mod pyramid;
 
 // Re-export a focused subset of core types for convenience. Consumers that
 // need lower-level primitives (rings, raw response functions, etc.) are
