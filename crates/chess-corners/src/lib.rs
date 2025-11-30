@@ -1,5 +1,5 @@
 #![cfg_attr(feature = "simd", feature(portable_simd))]
-//! Ergonomic wrappers over `chess-core` that accept `image::GrayImage` inputs.
+//! Ergonomic wrappers over `chess-corners-core` that accept `image::GrayImage` inputs.
 //!
 //! This crate is organized into a few focused modules:
 //! - [`image`] – single-scale helpers on `image::GrayImage`.
@@ -7,6 +7,7 @@
 //! - [`pyramid`] – reusable buffers and downsampling for image pyramids.
 //! - [`logger`] – a simple `log` implementation used by examples.
 
+#[cfg(feature = "image")]
 pub mod image;
 pub mod logger;
 pub mod multiscale;
@@ -14,10 +15,11 @@ pub mod pyramid;
 
 // Re-export a focused subset of core types for convenience. Consumers that
 // need lower-level primitives (rings, raw response functions, etc.) are
-// encouraged to depend on `chess-core` directly.
+// encouraged to depend on `chess-corners-core` directly.
 pub use chess_corners_core::{ChessParams, CornerDescriptor, ResponseMap};
 
 // High-level helpers on `image::GrayImage`.
+#[cfg(feature = "image")]
 pub use crate::image::{chess_response_image, find_corners_image};
 
 // Multiscale/coarse-to-fine API.
@@ -27,3 +29,4 @@ pub use crate::multiscale::{
 
 // Pyramid utilities are re-exported from the crate root for ergonomic access.
 pub use crate::pyramid::{build_pyramid, Pyramid, PyramidBuffers, PyramidLevel, PyramidParams};
+pub use crate::pyramid::{ImageBuffer, ImageView};

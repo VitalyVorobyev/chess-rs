@@ -1,4 +1,4 @@
-# chess-rs
+# chess-corners-rs
 
 [![CI](https://github.com/VitalyVorobyev/chess-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/VitalyVorobyev/chess-rs/actions/workflows/ci.yml)
 [![Security audit](https://github.com/VitalyVorobyev/chess-rs/actions/workflows/audit.yml/badge.svg)](https://github.com/VitalyVorobyev/chess-rs/actions/workflows/audit.yml)
@@ -13,9 +13,9 @@ ChESS is a classical, ID-free detector for chessboard **X-junction** corners. Th
 - Dense response computation plus NMS, minimum-cluster filtering, and 5x5 center-of-mass refinement.
 - Optional `rayon` parallelism and portable SIMD acceleration on the dense response path and pyramid downsampling.
 - Three crates:
-- `chess-core`: lean core (std optional) meant to stay SIMD/parallel-friendly.
-- `chess`: ergonomic facade that accepts `image::GrayImage`.
-- `chess-cli`: small CLI for single-scale and multiscale runs.
+- `chess-corners-core`: lean core (std optional) meant to stay SIMD/parallel-friendly.
+- `chess-corners`: ergonomic facade (optionally with `image`/`multiscale` features). Internally uses a minimal u8 image buffer for pyramids; `image` is only pulled in when the feature is enabled.
+- `chess-corners` binary: CLI for single-scale and multiscale runs.
 - Multiscale coarse-to-fine helpers with reusable pyramid buffers.
 - Corner descriptors that include subpixel position, scale, response,
   orientation, phase, and anisotropy.
@@ -24,7 +24,7 @@ ChESS is a classical, ID-free detector for chessboard **X-junction** corners. Th
 ## Quick start
 
 ```rust
-use chess::{chess_response_image, find_corners_image, ChessParams};
+use chess_corners::{chess_response_image, find_corners_image, ChessParams};
 use image::io::Reader as ImageReader;
 
 let img = ImageReader::open("board.png")?.decode()?.to_luma8();
@@ -43,12 +43,16 @@ if let Some(c) = corners.first() {
 }
 ```
 
+The `image` and `multiscale` features on `chess-corners` are enabled by default; disable them if you only need the low-level `chess-corners-core` API.
+
 Need timings for profiling? Swap in `find_corners_image_trace` to get per-stage milliseconds.
 
 ### Multiscale (coarse-to-fine)
 
 ```rust
-use chess::{find_corners_coarse_to_fine_image, ChessParams, CoarseToFineParams, PyramidBuffers};
+use chess_corners::{
+    find_corners_coarse_to_fine_image, ChessParams, CoarseToFineParams, PyramidBuffers,
+};
 use image::io::Reader as ImageReader;
 
 let img = ImageReader::open("board.png")?.decode()?.to_luma8();
@@ -72,7 +76,7 @@ response path.
 ## Development
 
 - Run the workspace tests: `cargo test`
-- Enable parallel response computation: `cargo test -p chess-core --features rayon`
+- Enable parallel response computation: `cargo test -p chess-corners-core --features rayon`
 - Run docs locally: `cargo doc --workspace --all-features --no-deps`
 
 ### CLI
@@ -80,7 +84,7 @@ response path.
 Run the bundled CLI for quick experiments:
 
 ```
-cargo run -p chess-cli -- run config/chess_cli_config.example.json
+cargo run -p chess-corners --release --bin chess-corners -- run config/chess_cli_config.example.json
 ```
 
 The config JSON drives both single-scale and multiscale runs:
@@ -115,13 +119,13 @@ The config JSON drives both single-scale and multiscale runs:
 You can override any field via CLI flags (e.g., `--mode single --downsample 2 --output_json out.json`).
 
 - SIMD and `rayon` are gated by Cargo features:
-  - Enable SIMD (nightly only) on the core: `cargo test -p chess-core --features simd`
-  - Enable both SIMD and `rayon`: `cargo test -p chess-core --features "simd,rayon"`
+  - Enable SIMD (nightly only) on the core: `cargo test -p chess-corners-core --features simd`
+  - Enable both SIMD and `rayon`: `cargo test -p chess-corners-core --features "simd,rayon"`
 
 - Tracing: enable structured spans for profiling by turning on the `tracing`
   feature in the libraries, and use env filters with the CLI:
-  - `cargo test -p chess-core --features tracing`
-  - `RUST_LOG=info cargo run -p chess-cli -- run config/chess_cli_config.example.json`
+  - `cargo test -p chess-corners-core --features tracing`
+  - `RUST_LOG=info cargo run -p chess-corners --release --bin chess-corners -- run config/chess_cli_config.example.json`
   - `--json-trace` switches the CLI to emit JSON-formatted spans.
 
 ## Status

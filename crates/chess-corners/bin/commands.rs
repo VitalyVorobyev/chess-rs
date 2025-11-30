@@ -7,6 +7,7 @@
 use anyhow::{Context, Result};
 use chess_corners::image::find_corners_image;
 use chess_corners::multiscale::find_corners_coarse_to_fine_image;
+use chess_corners::pyramid::ImageView;
 use chess_corners::{ChessParams, CoarseToFineParams, PyramidBuffers};
 use image::{
     imageops::{resize, FilterType},
@@ -181,7 +182,9 @@ fn run_multiscale(cfg: DetectionConfig) -> Result<()> {
 
     let img = ImageReader::open(&cfg.image)?.decode()?.to_luma8();
     let mut buffers = PyramidBuffers::with_capacity(cf.pyramid.num_levels);
-    buffers.prepare_for_image(&img, &cf.pyramid);
+    let base_view =
+        ImageView::from_u8_slice(img.width(), img.height(), img.as_raw()).expect("valid image");
+    buffers.prepare_for_image(&base_view, &cf.pyramid);
 
     let res = find_corners_coarse_to_fine_image(&img, &params, &cf, &mut buffers);
 

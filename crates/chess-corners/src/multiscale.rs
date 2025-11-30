@@ -8,7 +8,7 @@
 //! pyramid scale, with a minimum margin derived from the detector's own
 //! border.
 
-use crate::pyramid::{build_pyramid, PyramidBuffers, PyramidParams};
+use crate::pyramid::{build_pyramid, ImageView, PyramidBuffers, PyramidParams};
 use chess_corners_core::descriptor::{corners_to_descriptors, Corner};
 use chess_corners_core::detect::detect_corners_from_response;
 use chess_corners_core::response::{chess_response_u8, chess_response_u8_patch, Roi};
@@ -113,7 +113,9 @@ pub fn find_corners_coarse_to_fine_image(
     cf: &CoarseToFineParams,
     buffers: &mut PyramidBuffers,
 ) -> CoarseToFineResult {
-    let pyramid = build_pyramid(img, &cf.pyramid, buffers);
+    let base_view =
+        ImageView::from_u8_slice(img.width(), img.height(), img.as_raw()).expect("valid base view");
+    let pyramid = build_pyramid(base_view, &cf.pyramid, buffers);
     if pyramid.levels.is_empty() {
         return CoarseToFineResult {
             corners: Vec::new(),
@@ -122,8 +124,8 @@ pub fn find_corners_coarse_to_fine_image(
         };
     }
 
-    let base_w = img.width() as usize;
-    let base_h = img.height() as usize;
+    let base_w = base_view.width as usize;
+    let base_h = base_view.height as usize;
     let base_w_i = base_w as i32;
     let base_h_i = base_h as i32;
 
@@ -133,13 +135,13 @@ pub fn find_corners_coarse_to_fine_image(
         .last()
         .expect("pyramid levels are non-empty after earlier check");
 
-    let coarse_w = coarse_lvl.img.width() as usize;
-    let coarse_h = coarse_lvl.img.height() as usize;
+    let coarse_w = coarse_lvl.img.width as usize;
+    let coarse_h = coarse_lvl.img.height as usize;
 
     // Full detection on coarse level
     #[cfg(feature = "tracing")]
     let coarse_span = debug_span!("coarse").entered();
-    let coarse_resp = chess_response_u8(coarse_lvl.img.as_raw(), coarse_w, coarse_h, params);
+    let coarse_resp = chess_response_u8(coarse_lvl.img.data, coarse_w, coarse_h, params);
     let coarse_corners = detect_corners_from_response(&coarse_resp, params);
     #[cfg(feature = "tracing")]
     drop(coarse_span);

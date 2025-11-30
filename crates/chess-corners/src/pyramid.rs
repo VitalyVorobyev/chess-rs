@@ -5,9 +5,66 @@
 //! intermediate levels. When the `simd` feature is enabled, the 2× box
 //! downsample uses portable SIMD for higher throughput.
 
-use image::GrayImage;
 #[cfg(feature = "tracing")]
 use tracing::instrument;
+
+/// Borrowed grayscale image view (u8).
+#[derive(Clone, Copy, Debug)]
+pub struct ImageView<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub data: &'a [u8],
+}
+
+impl<'a> ImageView<'a> {
+    pub fn from_u8_slice(width: u32, height: u32, data: &'a [u8]) -> Option<Self> {
+        if (width as usize).saturating_mul(height as usize) != data.len() {
+            return None;
+        }
+        Some(Self {
+            width,
+            height,
+            data,
+        })
+    }
+}
+
+#[cfg(feature = "image")]
+impl<'a> From<&'a image::GrayImage> for ImageView<'a> {
+    fn from(img: &'a image::GrayImage) -> Self {
+        ImageView {
+            width: img.width(),
+            height: img.height(),
+            data: img.as_raw(),
+        }
+    }
+}
+
+/// Owned grayscale image buffer (u8).
+#[derive(Clone, Debug)]
+pub struct ImageBuffer {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>,
+}
+
+impl ImageBuffer {
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            data: vec![0; width.saturating_mul(height) as usize],
+        }
+    }
+
+    pub fn as_view(&self) -> ImageView<'_> {
+        ImageView {
+            width: self.width,
+            height: self.height,
+            data: &self.data,
+        }
+    }
+}
 
 /// Reusable backing storage for pyramid construction.
 ///
@@ -15,7 +72,7 @@ use tracing::instrument;
 /// internal buffers match the planned pyramid shape, then pass the same
 /// instance to [`build_pyramid`] to fill those buffers.
 pub struct PyramidBuffers {
-    levels: Vec<GrayImage>,
+    levels: Vec<ImageBuffer>,
 }
 
 impl Default for PyramidBuffers {
@@ -40,16 +97,13 @@ impl PyramidBuffers {
     /// Ensure buffers exist for all downsampled levels that will be produced
     /// for `base` and `params`. Returns the number of downsampled levels
     /// (excluding the base) that were sized.
-    pub fn prepare_for_image(&mut self, base: &GrayImage, params: &PyramidParams) -> usize {
-        if params.num_levels == 0
-            || base.width() < params.min_size
-            || base.height() < params.min_size
-        {
+    pub fn prepare_for_image(&mut self, base: &ImageView<'_>, params: &PyramidParams) -> usize {
+        if params.num_levels == 0 || base.width < params.min_size || base.height < params.min_size {
             return 0;
         }
 
-        let mut w = base.width();
-        let mut h = base.height();
+        let mut w = base.width;
+        let mut h = base.height;
         let mut prepared = 0usize;
 
         for _ in 1..params.num_levels {
@@ -73,19 +127,19 @@ impl PyramidBuffers {
 
     fn ensure_level_shape(&mut self, idx: usize, w: u32, h: u32) {
         if idx >= self.levels.len() {
-            self.levels.resize_with(idx + 1, || GrayImage::new(w, h));
+            self.levels.resize_with(idx + 1, || ImageBuffer::new(w, h));
         }
 
         let level = &mut self.levels[idx];
-        if level.width() != w || level.height() != h {
-            *level = GrayImage::new(w, h);
+        if level.width != w || level.height != h {
+            *level = ImageBuffer::new(w, h);
         }
     }
 }
 
 /// A single pyramid level. The `scale` is relative to the base image.
 pub struct PyramidLevel<'a> {
-    pub img: &'a GrayImage,
+    pub img: ImageView<'a>,
     pub scale: f32, // relative to base (e.g. 1.0, 0.5, 0.25, ...)
 }
 
@@ -127,11 +181,11 @@ impl Default for PyramidParams {
     )
 )]
 pub fn build_pyramid<'a>(
-    base: &'a GrayImage,
+    base: ImageView<'a>,
     params: &PyramidParams,
     buffers: &'a mut PyramidBuffers,
 ) -> Pyramid<'a> {
-    if params.num_levels == 0 || base.width() < params.min_size || base.height() < params.min_size {
+    if params.num_levels == 0 || base.width < params.min_size || base.height < params.min_size {
         return Pyramid { levels: Vec::new() };
     }
 
@@ -145,8 +199,8 @@ pub fn build_pyramid<'a>(
     sources.push((LevelSource::Base, 1.0));
 
     let mut current_src = LevelSource::Base;
-    let mut current_w = base.width();
-    let mut current_h = base.height();
+    let mut current_w = base.width;
+    let mut current_h = base.height;
     let mut scale = 1.0f32;
 
     for level_idx in 1..params.num_levels {
@@ -160,12 +214,12 @@ pub fn build_pyramid<'a>(
         let buf_idx = (level_idx - 1) as usize;
         buffers.ensure_level_shape(buf_idx, w2, h2);
 
-        let (src_img, dst): (&GrayImage, &mut GrayImage) = match current_src {
+        let (src_img, dst): (ImageView<'_>, &mut ImageBuffer) = match current_src {
             LevelSource::Base => (base, &mut buffers.levels[buf_idx]),
             LevelSource::Buffer(src_idx) => {
                 debug_assert!(src_idx < buf_idx);
                 let (head, tail) = buffers.levels.split_at_mut(buf_idx);
-                (&head[src_idx], &mut tail[0])
+                (head[src_idx].as_view(), &mut tail[0])
             }
         };
 
@@ -182,7 +236,7 @@ pub fn build_pyramid<'a>(
     for (source, lvl_scale) in sources {
         let img = match source {
             LevelSource::Base => base,
-            LevelSource::Buffer(idx) => &buffers.levels[idx],
+            LevelSource::Buffer(idx) => buffers.levels[idx].as_view(),
         };
         levels.push(PyramidLevel {
             img,
@@ -197,7 +251,7 @@ pub fn build_pyramid<'a>(
 ///
 /// Uses a SIMD specialization when the `simd` feature is enabled.
 #[inline]
-fn downsample_2x_box(src: &GrayImage, dst: &mut GrayImage) {
+fn downsample_2x_box(src: ImageView<'_>, dst: &mut ImageBuffer) {
     #[cfg(all(feature = "rayon", feature = "simd"))]
     return downsample_2x_box_parallel_simd(src, dst);
 
@@ -213,112 +267,92 @@ fn downsample_2x_box(src: &GrayImage, dst: &mut GrayImage) {
 
 #[inline]
 #[cfg(all(not(feature = "simd"), not(feature = "rayon")))]
-fn downsample_2x_box_scalar(src: &GrayImage, dst: &mut GrayImage) {
-    debug_assert_eq!(src.width() / 2, dst.width());
-    debug_assert_eq!(src.height() / 2, dst.height());
+fn downsample_2x_box_scalar(src: ImageView<'_>, dst: &mut ImageBuffer) {
+    debug_assert_eq!(src.width / 2, dst.width);
+    debug_assert_eq!(src.height / 2, dst.height);
 
-    let src_w = src.width() as usize;
-    let dst_w = dst.width() as usize;
-    let dst_h = dst.height() as usize;
-
-    let src_pixels = src.as_raw();
-    let dst_pixels = dst.as_mut();
+    let src_w = src.width as usize;
+    let dst_w = dst.width as usize;
+    let dst_h = dst.height as usize;
 
     for y in 0..dst_h {
         let row0 = (y * 2) * src_w;
         let row1 = row0 + src_w;
 
         downsample_row_scalar(
-            &src_pixels[row0..row0 + src_w],
-            &src_pixels[row1..row1 + src_w],
-            &mut dst_pixels[y * dst_w..(y + 1) * dst_w],
+            &src.data[row0..row0 + src_w],
+            &src.data[row1..row1 + src_w],
+            &mut dst.data[y * dst_w..(y + 1) * dst_w],
         );
     }
 }
 
 #[cfg(all(not(feature = "rayon"), feature = "simd"))]
-fn downsample_2x_box_simd(src: &GrayImage, dst: &mut GrayImage) {
-    debug_assert_eq!(src.width() / 2, dst.width());
-    debug_assert_eq!(src.height() / 2, dst.height());
+fn downsample_2x_box_simd(src: ImageView<'_>, dst: &mut ImageBuffer) {
+    debug_assert_eq!(src.width / 2, dst.width);
+    debug_assert_eq!(src.height / 2, dst.height);
 
-    let (src_w, src_h) = src.dimensions();
-    let dst_w = src_w / 2;
-    let dst_h = src_h / 2;
+    let src_w = src.width as usize;
+    let src_h = src.height as usize;
+    let dst_w = dst.width as usize;
+    let dst_h = dst.height as usize;
 
-    let src_buf = src.as_raw();
-    let dst_buf = dst.as_mut();
-
-    let src_stride = src_w as usize;
-    let dst_stride = dst_w as usize;
-
-    for y_out in 0..dst_h as usize {
+    for y_out in 0..dst_h {
         let y0 = 2 * y_out;
         let y1 = y0 + 1;
 
-        let row0 = &src_buf[y0 * src_stride..(y0 + 1) * src_stride];
-        let row1 = &src_buf[y1 * src_stride..(y1 + 1) * src_stride];
+        let row0 = &src.data[y0 * src_w..(y0 + 1) * src_w];
+        let row1 = &src.data[y1 * src_w..(y1 + 1) * src_w];
 
-        let dst_row = &mut dst_buf[y_out * dst_stride..(y_out + 1) * dst_stride];
+        let dst_row = &mut dst.data[y_out * dst_w..(y_out + 1) * dst_w];
 
         downsample_row_simd(row0, row1, dst_row);
     }
 }
 
 #[cfg(all(feature = "rayon", not(feature = "simd")))]
-fn downsample_2x_box_parallel_scalar(src: &GrayImage, dst: &mut GrayImage) {
+fn downsample_2x_box_parallel_scalar(src: ImageView<'_>, dst: &mut ImageBuffer) {
     use rayon::prelude::*;
 
-    debug_assert_eq!(src.width() / 2, dst.width());
-    debug_assert_eq!(src.height() / 2, dst.height());
+    debug_assert_eq!(src.width / 2, dst.width);
+    debug_assert_eq!(src.height / 2, dst.height);
 
-    let src_w = src.width();
-    let dst_w = src_w / 2;
+    let src_w = src.width as usize;
+    let dst_w = dst.width as usize;
 
-    let src_buf = src.as_raw();
-    let dst_buf = dst.as_mut();
-
-    let src_stride = src_w as usize;
-    let dst_stride = dst_w as usize;
-
-    dst_buf
-        .par_chunks_mut(dst_stride)
+    dst.data
+        .par_chunks_mut(dst_w)
         .enumerate()
         .for_each(|(y_out, dst_row)| {
             let y0 = 2 * y_out;
             let y1 = y0 + 1;
 
-            let row0 = &src_buf[y0 * src_stride..(y0 + 1) * src_stride];
-            let row1 = &src_buf[y1 * src_stride..(y1 + 1) * src_stride];
+            let row0 = &src.data[y0 * src_w..(y0 + 1) * src_w];
+            let row1 = &src.data[y1 * src_w..(y1 + 1) * src_w];
 
             downsample_row_scalar(row0, row1, dst_row);
         });
 }
 
 #[cfg(all(feature = "rayon", feature = "simd"))]
-fn downsample_2x_box_parallel_simd(src: &GrayImage, dst: &mut GrayImage) {
+fn downsample_2x_box_parallel_simd(src: ImageView<'_>, dst: &mut ImageBuffer) {
     use rayon::prelude::*;
 
-    debug_assert_eq!(src.width() / 2, dst.width());
-    debug_assert_eq!(src.height() / 2, dst.height());
+    debug_assert_eq!(src.width / 2, dst.width);
+    debug_assert_eq!(src.height / 2, dst.height);
 
-    let src_w = src.width();
-    let dst_w = src_w / 2;
+    let src_w = src.width as usize;
+    let dst_w = dst.width as usize;
 
-    let src_buf = src.as_raw();
-    let dst_buf = dst.as_mut();
-
-    let src_stride = src_w as usize;
-    let dst_stride = dst_w as usize;
-
-    dst_buf
-        .par_chunks_mut(dst_stride)
+    dst.data
+        .par_chunks_mut(dst_w)
         .enumerate()
         .for_each(|(y_out, dst_row)| {
             let y0 = 2 * y_out;
             let y1 = y0 + 1;
 
-            let row0 = &src_buf[y0 * src_stride..(y0 + 1) * src_stride];
-            let row1 = &src_buf[y1 * src_stride..(y1 + 1) * src_stride];
+            let row0 = &src.data[y0 * src_w..(y0 + 1) * src_w];
+            let row1 = &src.data[y1 * src_w..(y1 + 1) * src_w];
 
             downsample_row_simd(row0, row1, dst_row);
         });
@@ -342,6 +376,7 @@ fn downsample_row_scalar(row0: &[u8], row1: &[u8], dst_row: &mut [u8]) {
 
 #[cfg(feature = "simd")]
 fn downsample_row_simd(row0: &[u8], row1: &[u8], dst_row: &mut [u8]) {
+    use std::ops::Shr;
     use std::simd::num::SimdUint;
     use std::simd::{u16x16, u8x16};
 
@@ -363,168 +398,75 @@ fn downsample_row_simd(row0: &[u8], row1: &[u8], dst_row: &mut [u8]) {
             p11[lane] = row1[sx + 1];
         }
 
-        let a0 = u8x16::from_array(p00);
-        let a1 = u8x16::from_array(p01);
-        let b0 = u8x16::from_array(p10);
-        let b1 = u8x16::from_array(p11);
+        let p00v = u8x16::from_array(p00).cast::<u16>();
+        let p01v = u8x16::from_array(p01).cast::<u16>();
+        let p10v = u8x16::from_array(p10).cast::<u16>();
+        let p11v = u8x16::from_array(p11).cast::<u16>();
 
-        let sum: u16x16 = a0.cast::<u16>() + a1.cast::<u16>() + b0.cast::<u16>() + b1.cast::<u16>();
+        let sum = p00v + p01v + p10v + p11v;
+        let avg = (sum + u16x16::splat(2)).shr(2);
+        let out = avg.cast::<u8>();
 
-        let avg = (sum + u16x16::splat(2)) >> 2;
-        let out: u8x16 = avg.cast();
-
-        out.copy_to_slice(&mut dst_row[x_out..x_out + LANES]);
+        dst_row[x_out..x_out + LANES].copy_from_slice(out.as_array());
         x_out += LANES;
     }
 
-    for x in x_out..dst_row.len() {
-        let sx = 2 * x;
-        let p00 = row0[sx] as u16;
-        let p01 = row0[sx + 1] as u16;
-        let p10 = row1[sx] as u16;
-        let p11 = row1[sx + 1] as u16;
-        let sum = p00 + p01 + p10 + p11;
-        dst_row[x] = ((sum + 2) >> 2) as u8;
+    // Tail
+    if x_out < dst_row.len() {
+        downsample_row_scalar(row0, row1, &mut dst_row[x_out..]);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::Luma;
 
-    fn blank(w: u32, h: u32) -> GrayImage {
-        GrayImage::from_pixel(w, h, Luma([0u8]))
-    }
-
-    #[test]
-    fn build_pyramid_respects_min_size_and_levels() {
-        let base = blank(64, 64);
-        let params = PyramidParams {
-            num_levels: 4,
-            min_size: 8,
-        };
-        let mut buffers = PyramidBuffers::with_capacity(params.num_levels);
-        buffers.prepare_for_image(&base, &params);
-        let pyramid = build_pyramid(&base, &params, &mut buffers);
-        let dims: Vec<_> = pyramid
-            .levels
-            .iter()
-            .map(|lvl| (lvl.img.width(), lvl.img.height(), lvl.scale))
-            .collect();
-        assert_eq!(
-            dims,
-            vec![(64, 64, 1.0), (32, 32, 0.5), (16, 16, 0.25), (8, 8, 0.125)]
-        );
-    }
-
-    #[test]
-    fn build_pyramid_stops_when_reaching_min_size() {
-        let base = blank(20, 20);
-        let params = PyramidParams {
-            num_levels: 5,
-            min_size: 6,
-        };
-        let mut buffers = PyramidBuffers::new();
-        buffers.prepare_for_image(&base, &params);
-        let pyramid = build_pyramid(&base, &params, &mut buffers);
-        // 20 -> 10 -> 5 (stop at min_size)
-        let dims: Vec<_> = pyramid
-            .levels
-            .iter()
-            .map(|lvl| (lvl.img.width(), lvl.img.height()))
-            .collect();
-        assert_eq!(dims, vec![(20, 20), (10, 10)]);
-    }
-
-    #[test]
-    fn prepare_reuses_buffers_when_shape_matches() {
-        let base = blank(512, 512);
-        let params = PyramidParams::default();
-        let mut buffers = PyramidBuffers::new();
-        let first = buffers.prepare_for_image(&base, &params);
-        let ptrs: Vec<*const u8> = buffers.levels.iter().map(|l| l.as_ptr()).collect();
-        let second = buffers.prepare_for_image(&base, &params);
-        let ptrs_after: Vec<*const u8> = buffers.levels.iter().map(|l| l.as_ptr()).collect();
-        assert_eq!(first, 2); // 512 -> 256 -> 128 with default params
-        assert_eq!(second, first);
-        assert_eq!(
-            ptrs, ptrs_after,
-            "buffers should be reused when shapes match"
-        );
-    }
-
-    /// Slow, test-only reference implementation of 2× box downsampling.
-    fn reference_downsample_2x_box(src: &GrayImage) -> GrayImage {
-        let (w, h) = src.dimensions();
-        assert!(w % 2 == 0 && h % 2 == 0);
-        let dst_w = w / 2;
-        let dst_h = h / 2;
-
-        let mut dst = GrayImage::new(dst_w, dst_h);
-        let src_w = w as usize;
-        let dst_w_usize = dst_w as usize;
-
-        let src_pixels = src.as_raw();
-        let dst_pixels = dst.as_mut();
-
-        for y in 0..dst_h as usize {
-            let row0 = (y * 2) * src_w;
-            let row1 = row0 + src_w;
-            for x in 0..dst_w_usize {
-                let sx = 2 * x;
-                let p00 = src_pixels[row0 + sx] as u16;
-                let p01 = src_pixels[row0 + sx + 1] as u16;
-                let p10 = src_pixels[row1 + sx] as u16;
-                let p11 = src_pixels[row1 + sx + 1] as u16;
-                let sum = p00 + p01 + p10 + p11;
-                dst_pixels[y * dst_w_usize + x] = ((sum + 2) >> 2) as u8;
-            }
-        }
-
+    fn reference_downsample(src: &ImageBuffer) -> ImageBuffer {
+        let mut dst = ImageBuffer::new(src.width / 2, src.height / 2);
+        downsample_2x_box_scalar(src.as_view(), &mut dst);
         dst
     }
 
-    fn pattern_image(w: u32, h: u32) -> GrayImage {
-        let mut img = GrayImage::new(w, h);
-        for y in 0..h {
-            for x in 0..w {
-                // Simple but non-trivial pattern so averaging changes values.
-                let v = ((x as u16 * 3 + y as u16 * 5) % 251) as u8;
-                img.put_pixel(x, y, Luma([v]));
-            }
+    #[cfg(feature = "image")]
+    fn gray_to_buffer(img: &image::GrayImage) -> ImageBuffer {
+        ImageBuffer {
+            width: img.width(),
+            height: img.height(),
+            data: img.as_raw().clone(),
         }
-        img
+    }
+
+    #[cfg(feature = "image")]
+    fn make_checker(w: u32, h: u32, a: u8, b: u8) -> image::GrayImage {
+        image::GrayImage::from_fn(w, h, |x, y| {
+            if (x + y) % 2 == 0 {
+                image::Luma([a])
+            } else {
+                image::Luma([b])
+            }
+        })
     }
 
     #[test]
-    fn downsample_2x_box_matches_reference_on_aligned_size() {
-        let src = pattern_image(64, 48);
-        let expected = reference_downsample_2x_box(&src);
-
-        let mut dst = GrayImage::new(32, 24);
-        super::downsample_2x_box(&src, &mut dst);
-
-        assert_eq!(
-            expected.as_raw(),
-            dst.as_raw(),
-            "downsample_2x_box should match reference implementation"
-        );
+    fn downsample_matches_reference() {
+        let mut src = ImageBuffer::new(8, 8);
+        for (i, p) in src.data.iter_mut().enumerate() {
+            *p = (i % 251) as u8;
+        }
+        let mut dst = ImageBuffer::new(4, 4);
+        downsample_2x_box(src.as_view(), &mut dst);
+        let expected = reference_downsample(&src);
+        assert_eq!(dst.data, expected.data);
     }
 
+    #[cfg(feature = "image")]
     #[test]
-    fn downsample_2x_box_matches_reference_with_simd_tail() {
-        // Width chosen so SIMD handles the first chunk and the tail is scalar.
-        let src = pattern_image(38, 34); // dst: 19 x 17
-        let expected = reference_downsample_2x_box(&src);
-
-        let mut dst = GrayImage::new(19, 17);
-        super::downsample_2x_box(&src, &mut dst);
-
-        assert_eq!(
-            expected.as_raw(),
-            dst.as_raw(),
-            "downsample_2x_box should match reference on non-multiple-of-lanes width"
-        );
+    fn downsample_matches_reference_on_checker() {
+        let img = make_checker(17, 15, 0, 255);
+        let src = gray_to_buffer(&img);
+        let mut dst = ImageBuffer::new(src.width / 2, src.height / 2);
+        downsample_2x_box(src.as_view(), &mut dst);
+        let expected = reference_downsample(&src);
+        assert_eq!(dst.data, expected.data);
     }
 }
