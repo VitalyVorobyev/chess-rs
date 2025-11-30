@@ -21,9 +21,7 @@ pub mod image;
 pub use image::find_chess_corners_image;
 
 // Multiscale/coarse-to-fine API.
-pub use crate::multiscale::{
-    find_chess_corners, CoarseToFineParams, CoarseToFineResult,
-};
+pub use crate::multiscale::{find_chess_corners, CoarseToFineParams, CoarseToFineResult};
 
 // Pyramid utilities are re-exported from the crate root for ergonomic access.
 pub use crate::pyramid::{build_pyramid, Pyramid, PyramidBuffers, PyramidLevel, PyramidParams};

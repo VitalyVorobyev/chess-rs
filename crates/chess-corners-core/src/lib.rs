@@ -81,7 +81,11 @@ impl Default for ChessParams {
 impl ChessParams {
     #[inline]
     pub fn ring_radius(&self) -> u32 {
-        if self.use_radius10 { 10 } else { 5 }
+        if self.use_radius10 {
+            10
+        } else {
+            5
+        }
     }
 
     #[inline]

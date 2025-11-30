@@ -75,8 +75,12 @@ pub fn find_chess_corners(
 
     if pyramid.levels.len() == 1 {
         let lvl = &pyramid.levels[0];
-        let resp =
-            chess_response_u8(lvl.img.data, lvl.img.width as usize, lvl.img.height as usize, params);
+        let resp = chess_response_u8(
+            lvl.img.data,
+            lvl.img.width as usize,
+            lvl.img.height as usize,
+            params,
+        );
         let raw = detect_corners_from_response(&resp, params);
         let desc = corners_to_descriptors(
             lvl.img.data,

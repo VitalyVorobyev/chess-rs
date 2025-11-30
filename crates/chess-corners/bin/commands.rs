@@ -6,10 +6,8 @@
 
 use anyhow::{Context, Result};
 use chess_corners::{
+    image::find_chess_corners_image, multiscale::find_chess_corners, pyramid::ImageView,
     ChessParams, CoarseToFineParams, PyramidBuffers,
-    image::find_chess_corners_image,
-    multiscale::find_chess_corners,
-    pyramid::ImageView,
 };
 use image::{
     imageops::{resize, FilterType},
