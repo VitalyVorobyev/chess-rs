@@ -2,7 +2,9 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
-use chess_cli::commands::{load_config, run_detection, DetectionMode};
+mod commands;
+
+use commands::{load_config, run_detection, DetectionMode};
 use std::str::FromStr;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::util::SubscriberInitExt;

@@ -5,9 +5,9 @@
 //! share the same behavior.
 
 use anyhow::{Context, Result};
-use chess::image::find_corners_image;
-use chess::multiscale::find_corners_coarse_to_fine_image;
-use chess::{ChessParams, CoarseToFineParams, PyramidBuffers};
+use chess_corners::image::find_corners_image;
+use chess_corners::multiscale::find_corners_coarse_to_fine_image;
+use chess_corners::{ChessParams, CoarseToFineParams, PyramidBuffers};
 use image::{
     imageops::{resize, FilterType},
     ImageBuffer, ImageReader, Luma,

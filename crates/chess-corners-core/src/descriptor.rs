@@ -139,9 +139,7 @@ fn estimate_phase_from_orientation(theta: f32) -> u8 {
     let d90 = (t - FRAC_PI_2).abs();
 
     // phase = 0 if closer to 0/π, 2 if closer to π/2
-    if !t.is_finite() {
-        0
-    } else if d0 <= d90 {
+    if d0 <= d90 {
         0
     } else {
         2
