@@ -69,14 +69,14 @@ impl CoarseToFineParams {
 pub fn find_chess_corners_buff(
     base: ImageView<'_>,
     cfg: &ChessConfig,
-    buffers: &mut PyramidBuffers
+    buffers: &mut PyramidBuffers,
 ) -> Vec<CornerDescriptor> {
     let params = &cfg.params;
     let cf = &cfg.multiscale;
 
     let pyramid = build_pyramid(base, &cf.pyramid, buffers);
     if pyramid.levels.is_empty() {
-        return Vec::new()
+        return Vec::new();
     }
 
     if pyramid.levels.len() == 1 {
@@ -95,7 +95,7 @@ pub fn find_chess_corners_buff(
             params.descriptor_ring_radius(),
             raw,
         );
-        return desc
+        return desc;
     }
 
     let base_w = base.width as usize;
@@ -121,7 +121,7 @@ pub fn find_chess_corners_buff(
     drop(coarse_span);
 
     if coarse_corners.is_empty() {
-        return Vec::new()
+        return Vec::new();
     }
 
     let inv_scale = 1.0 / coarse_lvl.scale;
@@ -259,9 +259,7 @@ pub fn find_chess_corners_buff(
     drop(merge_span);
 
     let desc_radius = params.descriptor_ring_radius();
-    let descriptors = corners_to_descriptors(base.data, base_w, base_h, desc_radius, merged);
-
-    descriptors
+    corners_to_descriptors(base.data, base_w, base_h, desc_radius, merged)
 }
 
 /// Detect corners from a base-level grayscale view, allocating
@@ -280,10 +278,7 @@ pub fn find_chess_corners_buff(
         fields(levels = cfg.multiscale.pyramid.num_levels, min_size = cfg.multiscale.pyramid.min_size)
     )
 )]
-pub fn find_chess_corners(
-    base: ImageView<'_>,
-    cfg: &ChessConfig,
-) -> Vec<CornerDescriptor> {
+pub fn find_chess_corners(base: ImageView<'_>, cfg: &ChessConfig) -> Vec<CornerDescriptor> {
     let mut buffers = PyramidBuffers::with_capacity(cfg.multiscale.pyramid.num_levels);
     find_chess_corners_buff(base, cfg, &mut buffers)
 }

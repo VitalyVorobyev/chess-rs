@@ -1,6 +1,6 @@
 //! Optional `image::GrayImage` helpers for the unified corner detector.
 
-use crate::multiscale::{find_chess_corners};
+use crate::multiscale::find_chess_corners;
 use crate::pyramid::ImageView;
 use crate::{ChessConfig, CornerDescriptor};
 use image::GrayImage;

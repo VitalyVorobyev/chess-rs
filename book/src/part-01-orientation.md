@@ -189,7 +189,7 @@ cargo run -p chess-corners --release --bin chess-corners -- \
 This will:
 
 - Load the image specified in the config.
-- Run single-scale or multiscale detection depending on the `mode` and pyramid settings.
+- Run single-scale or multiscale detection depending on the `pyramid_levels` and `min_size` settings (with `pyramid_levels <= 1` behaving as single-scale).
 - Save JSON output with detected corners and optional PNG overlays.
 
 You can treat the CLI as:
@@ -201,4 +201,3 @@ You can treat the CLI as:
 ---
 
 This orientation part should give you enough context to know what ChESS is, how this workspace is structured, and how to bring the detector into your own project. In the next parts, we can dive deeper into the core ChESS math, the multiscale implementation, and practical tuning strategies.
-

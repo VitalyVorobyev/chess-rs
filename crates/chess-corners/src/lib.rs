@@ -145,7 +145,7 @@ pub use image::find_chess_corners_image;
 
 // Multiscale/coarse-to-fine API types.
 pub use crate::multiscale::{find_chess_corners, find_chess_corners_buff, CoarseToFineParams};
-pub use crate::pyramid::ImageView;
+pub use crate::pyramid::{ImageView, PyramidBuffers};
 
 /// Unified detector configuration combining response/detector params and
 /// multiscale/pyramid tuning.

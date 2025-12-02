@@ -92,8 +92,6 @@ The config JSON drives both single-scale and multiscale runs:
 ```json
 {
   "image": "testdata/images/Cam1.png",
-  "mode": "multiscale",
-  "downsample": null,
   "pyramid_levels": 3,
   "min_size": 12,
   "roi_radius": 12,
@@ -110,13 +108,11 @@ The config JSON drives both single-scale and multiscale runs:
 }
 ```
 
-- `mode`: `single` or `multiscale`
-- `downsample`: integer factor (single-scale only)
-- `pyramid_levels`, `min_size`, `roi_radius`, `merge_radius`: multiscale controls
+- `pyramid_levels`, `min_size`, `roi_radius`, `merge_radius`: multiscale controls (`pyramid_levels <= 1` behaves as single-scale; larger values request a multiscale coarse-to-fine run, with `min_size` limiting how deep the pyramid goes)
 - `threshold_rel` / `threshold_abs`, `radius`, `descriptor_radius`, `nms_radius`, `min_cluster_size`: detector + descriptor tuning (`descriptor_radius` falls back to `radius` when null)
 - `output_json` / `output_png`: override output paths (defaults next to the image)
 
-You can override any field via CLI flags (e.g., `--mode single --downsample 2 --output_json out.json`).
+You can override many fields via CLI flags (e.g., `--levels 1 --min_size 64 --output_json out.json`).
 
 - SIMD and `rayon` are gated by Cargo features:
   - Enable SIMD (nightly only) on the core: `cargo test -p chess-corners-core --features simd`
