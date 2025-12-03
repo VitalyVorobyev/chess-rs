@@ -4,3 +4,4 @@ testdata
 config/config.json
 output.json
 trace.json
+book/book
