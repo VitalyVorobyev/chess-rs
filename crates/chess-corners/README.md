@@ -39,6 +39,6 @@ Feature flags:
 
 The full guide-style documentation and API docs are published at:
 
-- Book: https://vitalyvorobyev.github.io/chess-rs/part-01-orientation.html
-- Rust docs: https://vitalyvorobyev.github.io/chess-rs/api/
+- Book: https://vitalyvorobyev.github.io/chess-corners-rs
+- Rust docs: https://vitalyvorobyev.github.io/chess-corners-rs/api/
 
