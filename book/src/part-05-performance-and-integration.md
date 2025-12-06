@@ -59,8 +59,23 @@ Here is the result of the OpenCV `findChessboardCornersSB` function:
 
 Harris pixel-level feature detection took 3.9 ms. The final result is obtained by using the `cornerSubPix` and manual merge of duplicates. Chessboard detection took about 115 ms. The ChESS detector is much faster as you can see from the table above. Also, it provides corner orientation that can be handy for a grid reconstruction.
 
-Below we compare the ChESS corners location with the two classical references.
+Below we compare the ChESS corners location with the two classical references. We took all images from the [Chessboard Pictures for Stereocamera Calibration](https://www.kaggle.com/datasets/danielwe14/stereocamera-chessboard-pictures) public repository. Below are distributions of pairwise distances between corresponding features:
 
+![](img/harris_dist.png)
+
+![](img/chessboard_dist.png)
+
+![](img/harris_vs_chessboard_dist.png)
+
+- Harris vs ChESS: 0.24 pix
+- Chessboard vs ChESS: 0.21 pix
+- Harris vs Chessboard: 0.12 pix
+
+It is important that the offsets are not biased:
+![](img/chessboard_dx.png)
+![](img/chessboard_dy.png)
+
+Mean values are much smaller than standard deviation.
 
 - Overall pixel error (nearest GT per detection): mean 0.24 px, median 0.22 px, 95th percentile 0.50 px, max 0.84 px across both cameras. Left/right are nearly symmetric (mean 0.23–0.25 px).
 - Per-frame consistency: most frames land in the 0.17–0.26 px mean range; histograms (`error_hist_overall.png`) show a tight unimodal distribution with a short tail.
