@@ -1,7 +1,5 @@
 """ OpenCV Harris corner detector tool. """
 
-from pathlib import Path
-
 import time
 import numpy as np
 import cv2

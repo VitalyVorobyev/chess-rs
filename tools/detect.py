@@ -54,7 +54,7 @@ def _save_overlay_image(
     fig.subplots_adjust(0, 0, 1, 1)
     ax.margins(0)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(path, dpi=150, bbox_inches="tight", pad_inches=0)
+    fig.savefig(str(path), dpi=150, bbox_inches="tight", pad_inches=0)
     plt.close(fig)
     print(f"Saved {title} overlay to {path}")
 

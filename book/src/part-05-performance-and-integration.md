@@ -32,22 +32,6 @@ The tests are performed on MacBook Pro M4. The numbers may be very different on 
 3 levels, rayon | 0.48 | 0.52 | 1.94
 3 levels, rayon, simd | 0.49 | 0.54 | 1.59
 
-
-
-
-## 5.1 Comparison with Harrison detector
-
-![](error_hist_overall.png)
-
-- Overall pixel error (nearest GT per detection): mean 0.24 px, median 0.22 px, 95th percentile 0.50 px, max 0.84 px across both cameras. Left/right are nearly symmetric (mean 0.23–0.25 px).
-- Per-frame consistency: most frames land in the 0.17–0.26 px mean range; histograms (`error_hist_overall.png`) show a tight unimodal distribution with a short tail.
-- What to look for in the plots:
-  - **Histograms** (`error_hist_left/right/overall.png`) reveal the spread and any skew.
-  - **Scatters** (`error_scatter_*.png`) highlight outlier detections; a few sparse points near 0.8 px are the worst cases.
-- Practical takeaway: at sub-pixel accuracy with <1 px max error, the detector is well within calibration tolerances for typical chessboard-based workflows.
-
-## 5.2 Performance (single vs multiscale, feature combos)
-
 Highlights from the timing profiles on small/mid/large images (3-level pyramid vs single-scale):
 
 - **Multiscale** is the clear winner for speed and robustness.
@@ -62,6 +46,29 @@ Highlights from the timing profiles on small/mid/large images (3-level pyramid v
   - Add **rayon** for large inputs (wins on the largest image, minor cost on small/mid).
   - **par_pyramid** was neutral-to-negative in these runs; keep it off unless profiling shows a gain on your workload.
   - Trace fields include `total_ms`, `coarse_detect_ms`, `refine_ms`, `merge_ms`, `single_scale_ms`, and seed counts (`refine_seeds`) for the multiscale path.
+
+## 5.1 Comparison with Harrison detector
+
+The OpenCV Harris feature detector gives the following result:
+
+![](img/mid_harris.png)
+
+Here is the result of the OpenCV `findChessboardCornersSB` function:
+
+![](img/mid_chessboard.png)
+
+Harris pixel-level feature detection took 3.9 ms. The final result is obtained by using the `cornerSubPix` and manual merge of duplicates. Chessboard detection took about 115 ms. The ChESS detector is much faster as you can see from the table above. Also, it provides corner orientation that can be handy for a grid reconstruction.
+
+Below we compare the ChESS corners location with the two classical references.
+
+
+- Overall pixel error (nearest GT per detection): mean 0.24 px, median 0.22 px, 95th percentile 0.50 px, max 0.84 px across both cameras. Left/right are nearly symmetric (mean 0.23–0.25 px).
+- Per-frame consistency: most frames land in the 0.17–0.26 px mean range; histograms (`error_hist_overall.png`) show a tight unimodal distribution with a short tail.
+- What to look for in the plots:
+  - **Histograms** (`error_hist_left/right/overall.png`) reveal the spread and any skew.
+  - **Scatters** (`error_scatter_*.png`) highlight outlier detections; a few sparse points near 0.8 px are the worst cases.
+- Practical takeaway: at sub-pixel accuracy with <1 px max error, the detector is well within calibration tolerances for typical chessboard-based workflows.
+
 
 ## 5.3 Tracing and diagnostics
 
@@ -82,9 +89,3 @@ Highlights from the timing profiles on small/mid/large images (3-level pyramid v
 - **Calibration/pose**: the accuracy report shows sub-pixel consistency; feed detected corners directly into calibration routines. Use the accuracy histograms to validate new camera data.
 - **Diagnostics in the field**: capture a short trace with `--json-trace` and inspect `refine_seeds` and span timings; spikes usually indicate harder scenes (more seeds) or contention (misconfigured features).
 - **Reproducibility**: keep generated reports under `testdata/out/`; rerun `accuracy_bench.py --batch` and `perf_bench.py` after algorithm or config changes, and drop updated plots into docs for before/after comparisons.
-
-## 5.5 Next steps
-
-- Automate plot generation from `perf_report.json` (bar charts by combo/config) to mirror the accuracy plots.
-- Explore adaptive `merge_radius` driven by image scale or seed density.
-- Revisit `par_pyramid` for very large images or multi-core desktops; measure again after any pyramid optimizations.

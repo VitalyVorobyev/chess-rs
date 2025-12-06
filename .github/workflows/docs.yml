@@ -23,6 +23,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
