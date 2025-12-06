@@ -3,7 +3,7 @@
 //! Usage:
 //!   cargo run -p chess-corners --example multiscale_image -- path/to/image.png
 
-use chess_corners::{ChessConfig, ChessParams};
+use chess_corners::ChessConfig;
 use image::ImageReader;
 use std::env;
 use std::error::Error;
@@ -18,7 +18,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     let img = ImageReader::open(&img_path)?.decode()?.to_luma8();
 
     let mut cfg = ChessConfig::default();
-    cfg.params = ChessParams::default();
     cfg.multiscale.pyramid.num_levels = 3;
     cfg.multiscale.pyramid.min_size = 64;
 
