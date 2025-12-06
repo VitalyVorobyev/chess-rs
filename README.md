@@ -4,7 +4,9 @@
 [![Security audit](https://github.com/VitalyVorobyev/chess-rs/actions/workflows/audit.yml/badge.svg)](https://github.com/VitalyVorobyev/chess-rs/actions/workflows/audit.yml)
 [![Docs](https://github.com/VitalyVorobyev/chess-rs/actions/workflows/docs.yml/badge.svg)](https://vitalyvorobyev.github.io/chess-rs/)
 
-Rust implementation of the **ChESS** (Chess-board Extraction by Subtraction and Summation) corner detector.
+Rust implementation of the [**ChESS**](https://arxiv.org/abs/1301.5491) (Chess-board Extraction by Subtraction and Summation) corner detector.
+
+![](book/src/img/mid_chess.png)
 
 ChESS is a classical, ID-free detector for chessboard **X-junction** corners. This workspace delivers a fast scalar kernel, corner extraction with non-maximum suppression and subpixel refinement, and convenient helpers for the `image` crate.
 
@@ -29,14 +31,11 @@ The published documentation includes:
 ## Quick start
 
 ```rust
-use chess_corners::{chess_response_image, find_corners_image, ChessParams};
+use chess_corners::{find_corners_image, ChessParams};
 use image::io::Reader as ImageReader;
 
 let img = ImageReader::open("board.png")?.decode()?.to_luma8();
 let params = ChessParams::default();
-
-let resp = chess_response_image(&img, &params);
-println!("response map: {} x {}", resp.w, resp.h);
 
 let corners = find_corners_image(&img, &params);
 println!("found {} corners", corners.len());
@@ -48,27 +47,9 @@ if let Some(c) = corners.first() {
 }
 ```
 
-The `image` and `multiscale` features on `chess-corners` are enabled by default; disable them if you only need the low-level `chess-corners-core` API.
+The `image` feature on `chess-corners` is enabled by default; disable them if you don't want to be dependent on the `ìmage` crate.
 
-Need timings for profiling? Swap in `find_corners_image_trace` to get per-stage milliseconds.
-
-### Multiscale (coarse-to-fine)
-
-```rust
-use chess_corners::{
-    find_corners_coarse_to_fine_image, ChessParams, CoarseToFineParams, PyramidBuffers,
-};
-use image::io::Reader as ImageReader;
-
-let img = ImageReader::open("board.png")?.decode()?.to_luma8();
-let params = ChessParams::default();
-let cf = CoarseToFineParams::default();
-let mut buffers = PyramidBuffers::new();
-buffers.prepare_for_image(&img, &cf.pyramid);
-
-let res = find_corners_coarse_to_fine_image(&img, &params, &cf, &mut buffers);
-println!("coarse stage ran in {:.2} ms, refined {} corners", res.coarse_ms, res.corners.len());
-```
+Need timings for profiling? Enable the `tracing` feature.
 
 The multiscale path uses a coarse detector on the smallest pyramid level and
 refines each seed in a base-image ROI. The ROI radius is specified in

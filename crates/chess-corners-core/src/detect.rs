@@ -192,6 +192,34 @@ fn refine_com_5x5(resp: &ResponseMap, x: usize, y: usize) -> [f32; 2] {
     }
 }
 
+/// Merge corners within a given radius, keeping the strongest response.
+#[cfg_attr(
+    feature = "tracing",
+    instrument(level = "info", skip(corners))
+)]
+pub fn merge_corners_simple(corners: &mut Vec<Corner>, radius: f32) -> Vec<Corner> {
+    let r2 = radius * radius;
+    let mut out: Vec<Corner> = Vec::new();
+
+    // naive O(N^2) for now; N is small for a single chessboard frame
+    'outer: for c in corners.drain(..) {
+        for o in &mut out {
+            let dx = c.xy[0] - o.xy[0];
+            let dy = c.xy[1] - o.xy[1];
+            if dx * dx + dy * dy <= r2 {
+                // keep the stronger
+                if c.strength > o.strength {
+                    *o = c;
+                }
+                continue 'outer;
+            }
+        }
+        out.push(c);
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,5 +278,31 @@ mod tests {
 
         assert!((best.x - best_brighter.x).abs() < 0.5 && (best.y - best_brighter.y).abs() < 0.5);
         assert_eq!(best.phase, best_brighter.phase);
+    }
+
+    #[test]
+    fn merge_corners_prefers_stronger_entries() {
+        let mut corners = vec![
+            Corner {
+                xy: [10.0, 10.0],
+                strength: 1.0,
+            },
+            Corner {
+                xy: [11.0, 11.0],
+                strength: 5.0,
+            },
+            Corner {
+                xy: [20.0, 20.0],
+                strength: 3.0,
+            },
+        ];
+        let merged = merge_corners_simple(&mut corners, 2.5);
+        assert_eq!(merged.len(), 2);
+        assert!(merged.iter().any(|c| (c.xy[0] - 11.0).abs() < 1e-6
+            && (c.xy[1] - 11.0).abs() < 1e-6
+            && (c.strength - 5.0).abs() < 1e-6));
+        assert!(merged
+            .iter()
+            .any(|c| (c.xy[0] - 20.0).abs() < 1e-6 && (c.xy[1] - 20.0).abs() < 1e-6));
     }
 }

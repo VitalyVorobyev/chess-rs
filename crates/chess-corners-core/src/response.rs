@@ -96,7 +96,7 @@ fn ring_from_params(params: &ChessParams) -> (RingOffsets, &'static [(i32, i32);
 /// performance characteristics.
 #[cfg_attr(
     feature = "tracing",
-    instrument(level = "debug", skip(img, params), fields(w, h))
+    instrument(level = "info", skip(img, params), fields(w, h))
 )]
 pub fn chess_response_u8(img: &[u8], w: usize, h: usize, params: &ChessParams) -> ResponseMap {
     // rayon path compiled only when feature is enabled
