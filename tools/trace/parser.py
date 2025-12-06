@@ -52,8 +52,13 @@ def parse_trace(stdout: str) -> Dict[str, float]:
                 metrics["levels"] = span.get("levels")
                 metrics["min_size"] = span.get("min_size")
                 metrics["total_ms"] = ms
-            elif name in {"coarse", "refine", "merge"}:
+            elif name in {"coarse", "coarse_detect", "refine", "merge", "single_scale"}:
                 metrics[f"{name}_ms"] = ms
+                # capture seeds when present on refine span
+                if name == "refine":
+                    seeds = span.get("seeds")
+                    if seeds is not None:
+                        metrics["refine_seeds"] = seeds
         elif target == "chess_corners::pyramid" and name == "build_pyramid":
             metrics["pyramid_ms"] = ms
         elif (

@@ -18,12 +18,14 @@ from __future__ import annotations
 from trace.io import print_results, combo_label
 from trace.runner import FeatureCombo, RunResult, run_combo
 
+import argparse
 import json
-
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUT = ROOT / "testdata" / "out" / "perf_report.json"
 
 def all_feature_combos() -> List[FeatureCombo]:
     combos: List[FeatureCombo] = []
@@ -47,10 +49,35 @@ def load_config(path: Path) -> Dict:
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
+def to_json(results: List[RunResult], runs: int) -> Dict:
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "runs": runs,
+        "results": [
+            {
+                "config": r.config_label,
+                "features": combo_label(r.combo),
+                "image": str(r.image),
+                "metrics": r.metrics,
+            }
+            for r in results
+        ],
+    }
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run chess-corners perf benchmarks.")
+    parser.add_argument("--runs", type=int, default=10, help="Runs per image per combo.")
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=DEFAULT_OUT,
+        help="Path to write JSON report.",
+    )
+    args = parser.parse_args()
+
     config = ROOT / "config" / "config.json"
     single_config = ROOT / "config" / "config_single.json"
-    runs = 10
+    runs = args.runs
 
     base_cfg = load_config(config)
     single_cfg = load_config(single_config)
@@ -72,6 +99,11 @@ def main() -> None:
             all_results.extend(results)
 
     print_results(all_results, runs)
+    report = to_json(all_results, runs)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with args.out.open("w", encoding="utf-8") as f:
+        json.dump(report, f, indent=2)
+    print(f"\nWrote JSON report: {args.out}")
 
 if __name__ == "__main__":
     main()

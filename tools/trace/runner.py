@@ -61,7 +61,6 @@ def run_once(root: Path, bin_path: Path, cfg_path: Path, tmpdir: Path) -> str:
         print(proc.stderr.strip())
     return proc.stdout
 
-
 def average_metrics(runs: List[Dict[str, float]]) -> Dict[str, float]:
     """Average metrics across repeated runs, ignoring missing entries per key."""
     keys = {k for r in runs for k in r.keys()}
