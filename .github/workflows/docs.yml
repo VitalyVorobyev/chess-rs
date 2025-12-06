@@ -23,13 +23,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rust-docs
 
       - name: Install mdBook
-        run: cargo install mdbook --version ^0.4 --locked
+        uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2

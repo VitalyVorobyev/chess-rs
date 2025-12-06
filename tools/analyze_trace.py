@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import matplotlib.pyplot as plt
+from trace.traceplot import plot_totals
 
 def parse_time(s: str) -> float:
     """
@@ -77,8 +78,6 @@ def load_spans(path: Path) -> Dict[Tuple[str, str], Dict[str, float]]:
     stats: Dict[Tuple[str, str], Dict[str, float]] = defaultdict(
         lambda: {"count": 0, "busy_s": 0.0, "idle_s": 0.0}
     )
-
-
 
     with path.open("r", encoding="utf-8") as fh:
         for line in fh:
@@ -151,36 +150,6 @@ def print_summary(stats: Dict[Tuple[str, str], Dict[str, float]]) -> None:
         print(
             f"{target[:30]:30} {name[:35]:35} {count:8d} {busy_ms:10.3f} {mean_ms:9.3f} {idle_ms:10.3f}"
         )
-
-
-def plot_totals(stats: Dict[Tuple[str, str], Dict[str, float]], out_path: Path) -> None:
-    # Aggregate by span path (across targets)
-    by_span: Dict[str, float] = defaultdict(float)
-    for (_target, path), s in stats.items():
-        by_span[path] += s["busy_s"] * 1e3  # ms
-
-    if not by_span:
-        print("No span data to plot.")
-        return
-
-    names = list(by_span.keys())
-    totals = [by_span[n] for n in names]
-
-    # Sort by total descending
-    names, totals = zip(*sorted(zip(names, totals), key=lambda p: p[1], reverse=True))
-
-    plt.figure(figsize=(10, 4 + 0.25 * len(names)))
-    y_pos = range(len(names))
-    plt.barh(y_pos, totals)
-    plt.yticks(y_pos, names)
-    plt.xlabel("Total busy time (ms)")
-    plt.title("Total span time by name")
-    plt.gca().invert_yaxis()
-    plt.tight_layout()
-
-    plt.savefig(out_path, dpi=150)
-    print(f"Saved performance plot to {out_path}")
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(

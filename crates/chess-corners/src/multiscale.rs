@@ -20,7 +20,7 @@
 use crate::pyramid::{build_pyramid, ImageView, PyramidBuffers, PyramidParams};
 use crate::ChessConfig;
 use chess_corners_core::descriptor::{corners_to_descriptors, Corner};
-use chess_corners_core::detect::detect_corners_from_response;
+use chess_corners_core::detect::{detect_corners_from_response, merge_corners_simple};
 use chess_corners_core::response::{chess_response_u8, chess_response_u8_patch, Roi};
 use chess_corners_core::CornerDescriptor;
 #[cfg(feature = "rayon")]
@@ -81,20 +81,26 @@ pub fn find_chess_corners_buff(
 
     if pyramid.levels.len() == 1 {
         let lvl = &pyramid.levels[0];
+        #[cfg(feature = "tracing")]
+        let single_span =
+            info_span!("single_scale", w = lvl.img.width, h = lvl.img.height).entered();
         let resp = chess_response_u8(
             lvl.img.data,
             lvl.img.width as usize,
             lvl.img.height as usize,
             params,
         );
-        let raw = detect_corners_from_response(&resp, params);
+        let mut raw = detect_corners_from_response(&resp, params);
+        let merged = merge_corners_simple(&mut raw, cf.merge_radius);
         let desc = corners_to_descriptors(
             lvl.img.data,
             lvl.img.width as usize,
             lvl.img.height as usize,
             params.descriptor_ring_radius(),
-            raw,
+            merged,
         );
+        #[cfg(feature = "tracing")]
+        drop(single_span);
         return desc;
     }
 
@@ -112,9 +118,9 @@ pub fn find_chess_corners_buff(
     let coarse_w = coarse_lvl.img.width as usize;
     let coarse_h = coarse_lvl.img.height as usize;
 
-    // Full detection on coarse level
     #[cfg(feature = "tracing")]
-    let coarse_span = info_span!("coarse").entered();
+    let coarse_span = info_span!("coarse_detect", w = coarse_w, h = coarse_h).entered();
+    // Full detection on coarse level
     let coarse_resp = chess_response_u8(coarse_lvl.img.data, coarse_w, coarse_h, params);
     let coarse_corners = detect_corners_from_response(&coarse_resp, params);
     #[cfg(feature = "tracing")]
@@ -140,9 +146,6 @@ pub fn find_chess_corners_buff(
     let roi_r_base = (cf.roi_radius as f32 / coarse_lvl.scale).ceil() as i32;
     let min_roi_r = border + 2;
     let roi_r = roi_r_base.max(min_roi_r);
-
-    #[cfg(feature = "tracing")]
-    let refine_span = info_span!("refine").entered();
 
     let refine_one = |c: Corner| -> Option<Vec<Corner>> {
         // Project coarse coordinate to base image
@@ -231,6 +234,9 @@ pub fn find_chess_corners_buff(
         }
     };
 
+    #[cfg(feature = "tracing")]
+    let refine_span = info_span!("refine", seeds = coarse_corners.len(), roi_r = roi_r).entered();
+
     #[cfg(feature = "rayon")]
     let mut refined: Vec<Corner> = coarse_corners
         .into_par_iter()
@@ -253,7 +259,12 @@ pub fn find_chess_corners_buff(
     drop(refine_span);
 
     #[cfg(feature = "tracing")]
-    let merge_span = info_span!("merge").entered();
+    let merge_span = info_span!(
+        "merge",
+        merge_radius = cf.merge_radius,
+        candidates = refined.len()
+    )
+    .entered();
     let merged = merge_corners_simple(&mut refined, cf.merge_radius);
     #[cfg(feature = "tracing")]
     drop(merge_span);
@@ -283,59 +294,10 @@ pub fn find_chess_corners(base: ImageView<'_>, cfg: &ChessConfig) -> Vec<CornerD
     find_chess_corners_buff(base, cfg, &mut buffers)
 }
 
-fn merge_corners_simple(corners: &mut Vec<Corner>, radius: f32) -> Vec<Corner> {
-    let r2 = radius * radius;
-    let mut out: Vec<Corner> = Vec::new();
-
-    // naive O(N^2) for now; N is small for single chessboard
-    'outer: for c in corners.drain(..) {
-        for o in &mut out {
-            let dx = c.xy[0] - o.xy[0];
-            let dy = c.xy[1] - o.xy[1];
-            if dx * dx + dy * dy <= r2 {
-                // keep the stronger
-                if c.strength > o.strength {
-                    *o = c;
-                }
-                continue 'outer;
-            }
-        }
-        out.push(c);
-    }
-
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::pyramid::ImageBuffer;
-
-    #[test]
-    fn merge_corners_prefers_stronger_entries() {
-        let mut corners = vec![
-            Corner {
-                xy: [10.0, 10.0],
-                strength: 1.0,
-            },
-            Corner {
-                xy: [11.0, 11.0],
-                strength: 5.0,
-            },
-            Corner {
-                xy: [20.0, 20.0],
-                strength: 3.0,
-            },
-        ];
-        let merged = merge_corners_simple(&mut corners, 2.5);
-        assert_eq!(merged.len(), 2);
-        assert!(merged.iter().any(|c| (c.xy[0] - 11.0).abs() < 1e-6
-            && (c.xy[1] - 11.0).abs() < 1e-6
-            && (c.strength - 5.0).abs() < 1e-6));
-        assert!(merged
-            .iter()
-            .any(|c| (c.xy[0] - 20.0).abs() < 1e-6 && (c.xy[1] - 20.0).abs() < 1e-6));
-    }
 
     #[test]
     fn coarse_to_fine_trace_reports_timings() {
