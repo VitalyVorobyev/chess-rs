@@ -48,7 +48,7 @@ The `chess-corners` crate enables the `image` feature by default so you can work
 
 ```rust
 use chess_corners::{ChessConfig, find_chess_corners_image};
-use image::io::Reader as ImageReader;
+use image::ImageReader;
 
 let img = ImageReader::open("board.png")?.decode()?.to_luma8();
 let cfg = ChessConfig::single_scale();
