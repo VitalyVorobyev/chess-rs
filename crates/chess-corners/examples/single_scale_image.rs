@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let img_path = env::args()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("testdata/mid.png"));
+        .unwrap_or_else(|| PathBuf::from("testimages/mid.png"));
 
     let img = ImageReader::open(&img_path)?.decode()?.to_luma8();
 

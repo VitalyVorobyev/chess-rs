@@ -41,12 +41,12 @@ impl Default for CoarseToFineParams {
     fn default() -> Self {
         Self {
             pyramid: PyramidParams::default(),
-            // smaller ROI (2*12+1 = 25px window) *at the coarse level* around
-            // the prediction. At the base level this is upscaled according to
-            // the coarse pyramid scale.
-            roi_radius: 12,
-            // merge duplicates within ~2 pixels
-            merge_radius: 2.0,
+            // Smaller coarse-level ROI around each coarse prediction. With the
+            // default 3-level pyramid this maps to roughly a 12px radius
+            // (~25px window) at the base resolution.
+            roi_radius: 3,
+            // merge duplicates within ~3 pixels
+            merge_radius: 3.0,
         }
     }
 }

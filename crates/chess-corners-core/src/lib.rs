@@ -57,7 +57,7 @@ pub struct ChessParams {
     /// Optional override for descriptor sampling ring (r=5 vs r=10). Falls back
     /// to `use_radius10` when `None`.
     pub descriptor_use_radius10: Option<bool>,
-    /// Relative threshold as a fraction of max response (e.g. 0.015 = 1.5%).
+    /// Relative threshold as a fraction of max response (e.g. 0.2 = 20%).
     pub threshold_rel: f32,
     /// Absolute threshold override; if `Some`, this is used instead of `threshold_rel`.
     pub threshold_abs: Option<f32>,
@@ -73,9 +73,9 @@ impl Default for ChessParams {
         Self {
             use_radius10: false,
             descriptor_use_radius10: None,
-            threshold_rel: 0.015,
+            threshold_rel: 0.2,
             threshold_abs: None,
-            nms_radius: 1,
+            nms_radius: 2,
             min_cluster_size: 2,
         }
     }

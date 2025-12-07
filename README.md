@@ -8,6 +8,8 @@ Rust implementation of the [**ChESS**](https://arxiv.org/abs/1301.5491) (Chess-b
 
 ![](book/src/img/mid_chess.png)
 
+([image source](https://www.kaggle.com/datasets/danielwe14/stereocamera-chessboard-pictures))
+
 ChESS is a classical, ID-free detector for chessboard **X-junction** corners. This workspace delivers a fast scalar kernel, corner extraction with non-maximum suppression and subpixel refinement, and convenient helpers for the `image` crate.
 
 The published documentation includes:
@@ -27,12 +29,11 @@ The published documentation includes:
 ## Quick start
 
 ```rust
-use chess_corners::{ChessConfig, ChessParams, find_chess_corners_image};
+use chess_corners::{ChessConfig, find_chess_corners_image};
 use image::io::Reader as ImageReader;
 
 let img = ImageReader::open("board.png")?.decode()?.to_luma8();
 let mut cfg = ChessConfig::single_scale();
-cfg.params = ChessParams::default();
 
 let corners = find_chess_corners_image(&img, &cfg);
 println!("found {} corners", corners.len());
@@ -57,6 +58,15 @@ patch refinement benefits from the same SIMD and parallelism as the dense
 response path. Pyramid downsampling stays scalar unless the `par_pyramid`
 feature is enabled alongside `simd` and/or `rayon`.
 
+### Examples
+
+The `chess-corners` crate ships small examples that operate directly on `image::GrayImage` inputs and use the sample images under `testimages/`:
+
+- Single-scale: `cargo run -p chess-corners --example single_scale_image -- testimages/mid.png`
+- Multiscale: `cargo run -p chess-corners --example multiscale_image -- testimages/large.png`
+
+These examples rely on the optional `image` feature on `chess-corners` (enabled by default). If you build with `--no-default-features`, pass `--features image` when running them.
+
 ## Development
 
 - Run the workspace tests: `cargo test`
@@ -75,18 +85,18 @@ The config JSON drives both single-scale and multiscale runs:
 
 ```json
 {
-  "image": "testdata/images/Cam1.png",
+  "image": "testimages/mid.png",
   "pyramid_levels": 3,
   "min_size": 64,
   "roi_radius": 12,
-  "merge_radius": 2.0,
+  "merge_radius": 3.0,
   "output_json": null,
   "output_png": null,
-  "threshold_rel": 0.015,
+  "threshold_rel": 0.2,
   "threshold_abs": null,
   "radius10": false,
   "descriptor_radius10": null,
-  "nms_radius": 1,
+  "nms_radius": 2,
   "min_cluster_size": 2,
   "log_level": "info"
 }
