@@ -31,9 +31,14 @@ use tracing::{info_span, instrument};
 /// Parameters controlling the coarse-to-fine multiscale detector.
 #[derive(Clone, Debug)]
 pub struct CoarseToFineParams {
+    /// Image pyramid shape and construction parameters.
     pub pyramid: PyramidParams,
     /// ROI radius at the coarse level (ignored when `pyramid.num_levels <= 1`).
+    /// Expressed in coarse-level pixels and automatically scaled to the base
+    /// image, with a minimum enforced to keep refinement away from borders.
     pub roi_radius: u32,
+    /// Radius (in base-image pixels) used to merge near-duplicate refined
+    /// corners after coarse-to-fine refinement.
     pub merge_radius: f32,
 }
 
@@ -41,12 +46,12 @@ impl Default for CoarseToFineParams {
     fn default() -> Self {
         Self {
             pyramid: PyramidParams::default(),
-            // smaller ROI (2*12+1 = 25px window) *at the coarse level* around
-            // the prediction. At the base level this is upscaled according to
-            // the coarse pyramid scale.
-            roi_radius: 12,
-            // merge duplicates within ~2 pixels
-            merge_radius: 2.0,
+            // Smaller coarse-level ROI around each coarse prediction. With the
+            // default 3-level pyramid this maps to roughly a 12px radius
+            // (~25px window) at the base resolution.
+            roi_radius: 3,
+            // merge duplicates within ~3 pixels
+            merge_radius: 3.0,
         }
     }
 }
@@ -281,6 +286,7 @@ pub fn find_chess_corners_buff(
 /// repeated calls on successive frames, prefer
 /// [`find_chess_corners_buff`] with a reusable [`PyramidBuffers`] to
 /// avoid repeated allocations.
+#[must_use]
 #[cfg_attr(
     feature = "tracing",
     instrument(

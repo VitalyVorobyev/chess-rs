@@ -9,6 +9,8 @@ This crate:
 - Provides a unified `ChessConfig` for single-scale and multiscale detection.
 - Adds optional `image::GrayImage` integration and a small CLI binary for batch runs.
 
+## Examples
+
 By default the `image` feature is enabled so you can work directly with `GrayImage`:
 
 ```rust
@@ -29,6 +31,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+You can also try the bundled examples on sample images in `testimages/`:
+
+- Single-scale: `cargo run -p chess-corners --example single_scale_image -- testimages/mid.png`
+- Multiscale: `cargo run -p chess-corners --example multiscale_image -- testimages/large.png`
+
+Both examples require the `image` feature, which is enabled by default. If you build with `--no-default-features`, re-enable it when running examples: `--features image`.
+
 Feature flags:
 
 - `image` *(default)* – enable `find_chess_corners_image` for `image::GrayImage`.
@@ -41,4 +50,3 @@ The full guide-style documentation and API docs are published at:
 
 - Book: https://vitalyvorobyev.github.io/chess-corners-rs
 - Rust docs: https://vitalyvorobyev.github.io/chess-corners-rs/api/
-
