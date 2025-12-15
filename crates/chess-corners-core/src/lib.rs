@@ -7,8 +7,8 @@
 //! This crate exposes two main building blocks:
 //!
 //! - [`response`] – dense ChESS response computation on 8‑bit grayscale images.
-//! - [`detect`] – thresholding, non‑maximum suppression (NMS), and 5×5
-//!   center‑of‑mass refinement on a response map.
+//! - [`detect`] + [`refine`] – thresholding, non‑maximum suppression (NMS),
+//!   and pluggable subpixel refinement (center-of-mass, Förstner, saddle-point).
 //!
 //! The response is based on a 16‑sample ring (see [`ring`]) and is intended for
 //! chessboard‑like corner detection, as described in the ChESS paper
@@ -40,15 +40,24 @@
 //! The detector in [`detect`] is independent of `rayon`/`simd`, and `tracing`
 //! only adds observability; none of these features change the numerical
 //! results, only performance and instrumentation.
+//!
+//! The ChESS idea is proposed in the papaer Bennett, Lasenby, *ChESS: A Fast and
+//! Accurate Chessboard Corner Detector*, CVIU 2014
 
 pub mod descriptor;
 pub mod detect;
+pub mod refine;
 pub mod response;
 pub mod ring;
 
 use crate::ring::RingOffsets;
 
 pub use crate::descriptor::CornerDescriptor;
+pub use crate::refine::{
+    CenterOfMassConfig, CenterOfMassRefiner, CornerRefiner, ForstnerConfig, ForstnerRefiner,
+    ImageView, RefineContext, RefineResult, RefineStatus, Refiner, RefinerKind, SaddlePointConfig,
+    SaddlePointRefiner,
+};
 /// Tunable parameters for the ChESS response computation and corner detection.
 #[derive(Clone, Debug)]
 pub struct ChessParams {

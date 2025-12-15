@@ -6,7 +6,7 @@ This crate implements:
 
 - 16-sample ChESS rings (`ring` module) at radii 5 and 10.
 - Dense response computation on 8-bit grayscale images (`response` module).
-- Thresholding, non-maximum suppression, and 5×5 center-of-mass refinement (`detect` module).
+- Thresholding, non-maximum suppression, and pluggable subpixel refinement (`detect` + `refine` modules).
 - Conversion from raw peaks to rich corner descriptors (`descriptor` module).
 
 Feature flags:
@@ -19,15 +19,20 @@ Feature flags:
 Basic usage:
 
 ```rust
-use chess_corners_core::{detect::find_corners_u8, ChessParams};
+use chess_corners_core::{detect::find_corners_u8_with_kind, ChessParams, RefinerKind};
 
 fn detect(img: &[u8], w: usize, h: usize) {
     let params = ChessParams::default();
-    let corners = find_corners_u8(img, w, h, &params);
+    // Default = center-of-mass refinement on the response map.
+    let corners = find_corners_u8_with_kind(img, w, h, &params, &RefinerKind::default());
     println!("found {} corners", corners.len());
+
+    // Opt into Förstner or saddle-point refiners on the image intensities:
+    let forstner = RefinerKind::Forstner(Default::default());
+    let refined = find_corners_u8_with_kind(img, w, h, &params, &forstner);
+    println!("found {} corners with Förstner", refined.len());
 }
 ```
 
 For a higher-level, image-friendly API (including multiscale detection and an optional CLI),
 see the `chess-corners` crate in this workspace.
-

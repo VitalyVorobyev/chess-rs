@@ -30,7 +30,7 @@ path = "bin/main.rs"
 required-features = ["image"]
 
 [dependencies]
-chess-corners-core = { path = "../chess-corners-core", version = "0.1.2" }
+chess-corners-core = { path = "../chess-corners-core", version = "0.1" }
 image = { version = "0.25", optional = true }
 log = "0.4"
 anyhow = "1"

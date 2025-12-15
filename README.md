@@ -143,6 +143,8 @@ Implemented:
 - SIMD acceleration and optional `rayon` parallelism on the response path; pyramid downsampling can opt into SIMD/parallelism via `par_pyramid`
 - CLI tooling and plotting helper for JSON/PNG-based inspection
 
+For contribution rules see [AGENTS.md](./AGENTS.ms).
+
 ## License
 
 Licensed under the MIT license (see `Cargo.toml`).
