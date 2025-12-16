@@ -1,6 +1,7 @@
 //! Corner detection utilities built on top of the dense ChESS response map.
 use crate::descriptor::{corners_to_descriptors, Corner, CornerDescriptor};
-use crate::refine::{CornerRefiner, ImageView, RefineContext, RefineStatus, Refiner, RefinerKind};
+use crate::imageview::ImageView;
+use crate::refine::{CornerRefiner, RefineContext, RefineStatus, Refiner, RefinerKind};
 use crate::response::chess_response_u8;
 use crate::{ChessParams, ResponseMap};
 

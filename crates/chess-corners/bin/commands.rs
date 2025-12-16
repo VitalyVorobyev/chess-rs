@@ -86,7 +86,7 @@ pub fn run_detection(cfg: DetectionConfig) -> Result<()> {
         width: img.width(),
         height: img.height(),
         pyramid_levels: levels,
-        min_size,
+        min_size: min_size as u32,
         roi_radius,
         merge_radius,
         corners: corners
@@ -169,7 +169,7 @@ fn apply_multiscale_overrides(cf: &mut CoarseToFineParams, cfg: &DetectionConfig
         if v == 0 {
             anyhow::bail!("min-size must be >= 1");
         }
-        cf.pyramid.min_size = v;
+        cf.pyramid.min_size = v as usize;
     }
     if let Some(v) = cfg.roi_radius {
         if v == 0 {

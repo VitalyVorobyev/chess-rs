@@ -46,6 +46,7 @@
 
 pub mod descriptor;
 pub mod detect;
+pub mod imageview;
 pub mod refine;
 pub mod response;
 pub mod ring;
@@ -55,9 +56,10 @@ use crate::ring::RingOffsets;
 pub use crate::descriptor::CornerDescriptor;
 pub use crate::refine::{
     CenterOfMassConfig, CenterOfMassRefiner, CornerRefiner, ForstnerConfig, ForstnerRefiner,
-    ImageView, RefineContext, RefineResult, RefineStatus, Refiner, RefinerKind, SaddlePointConfig,
+    RefineContext, RefineResult, RefineStatus, Refiner, RefinerKind, SaddlePointConfig,
     SaddlePointRefiner,
 };
+pub use imageview::ImageView;
 /// Tunable parameters for the ChESS response computation and corner detection.
 #[derive(Clone, Debug)]
 pub struct ChessParams {

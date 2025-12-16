@@ -17,13 +17,13 @@
 //!   caller-provided [`PyramidBuffers`] so you can reuse allocations
 //!   across frames in a tight loop.
 
-use crate::pyramid::{build_pyramid, ImageView, PyramidBuffers, PyramidParams};
+use crate::pyramid::{build_pyramid, PyramidBuffers, PyramidParams};
 use crate::ChessConfig;
 use chess_corners_core::descriptor::{corners_to_descriptors, Corner};
 use chess_corners_core::detect::{detect_corners_from_response_with_kind, merge_corners_simple};
 use chess_corners_core::response::{chess_response_u8, chess_response_u8_patch, Roi};
 use chess_corners_core::CornerDescriptor;
-use chess_corners_core::{ImageView as CoreImageView, RefinerKind};
+use chess_corners_core::{ImageView, RefinerKind};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 #[cfg(feature = "tracing")]
@@ -106,7 +106,7 @@ pub fn find_chess_corners_buff_with_refiner(
             lvl.img.height as usize,
             params,
         );
-        let refine_view = CoreImageView::from_u8_slice(
+        let refine_view = ImageView::from_u8_slice(
             lvl.img.width as usize,
             lvl.img.height as usize,
             lvl.img.data,
@@ -146,7 +146,7 @@ pub fn find_chess_corners_buff_with_refiner(
     // Full detection on coarse level
     let coarse_resp = chess_response_u8(coarse_lvl.img.data, coarse_w, coarse_h, params);
     let coarse_view =
-        CoreImageView::from_u8_slice(coarse_w, coarse_h, coarse_lvl.img.data).unwrap();
+        ImageView::from_u8_slice(coarse_w, coarse_h, coarse_lvl.img.data).unwrap();
     let coarse_corners =
         detect_corners_from_response_with_kind(&coarse_resp, params, Some(coarse_view), refiner);
     #[cfg(feature = "tracing")]
@@ -246,7 +246,7 @@ pub fn find_chess_corners_buff_with_refiner(
 
         // Run the standard detector on the patch response. It treats the patch
         // as an independent image with its own (0,0) origin.
-        let refine_view = CoreImageView::with_origin(base_w, base_h, base.data, [x0, y0])
+        let refine_view = ImageView::with_origin(base_w, base_h, base.data, [x0, y0])
             .expect("base image dimensions must match buffer length");
         let mut patch_corners =
             detect_corners_from_response_with_kind(&patch_resp, params, Some(refine_view), refiner);

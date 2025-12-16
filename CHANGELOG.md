@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0]
+
+### Added
+
+- Pluggable subpixel refinement trait (`CornerRefiner`) with three built-ins: center-of-mass (legacy default), Förstner, and saddle-point quadratic fit, plus reusable runtime selector (`RefinerKind`).
+- New public helpers to pick refiners explicitly (`find_corners_u8_with_kind`, `find_chess_corners_with_refiner`, `find_chess_corners_image_with_refiner`) and config field `ChessConfig::refiner`.
+- Refinement docs and README guidance on choosing/configuring refiners; core README updated with refined examples.
+- Unit tests covering each refiner and a regression test ensuring the default matches prior COM behavior.
+
+### Changed
+
+- Default behavior remains center-of-mass refinement, but the detector wiring now routes through the refiner abstraction; refinement window radius is driven by the selected refiner.
+
 ## [0.1.2]
 
 ### Added

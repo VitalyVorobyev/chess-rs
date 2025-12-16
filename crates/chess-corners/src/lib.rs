@@ -146,7 +146,7 @@ mod pyramid;
 // encouraged to depend on `chess-corners-core` directly.
 pub use chess_corners_core::{
     CenterOfMassConfig, ChessParams, CornerDescriptor, CornerRefiner, ForstnerConfig, RefineResult,
-    RefineStatus, Refiner, RefinerKind, ResponseMap, SaddlePointConfig,
+    RefineStatus, Refiner, RefinerKind, ResponseMap, SaddlePointConfig, ImageView
 };
 
 // High-level helpers on `image::GrayImage`.
@@ -160,7 +160,7 @@ pub use crate::multiscale::{
     find_chess_corners, find_chess_corners_buff, find_chess_corners_buff_with_refiner,
     find_chess_corners_with_refiner, CoarseToFineParams,
 };
-pub use crate::pyramid::{ImageView, PyramidBuffers};
+pub use crate::pyramid::PyramidBuffers;
 
 /// Unified detector configuration combining response/detector params and
 /// multiscale/pyramid tuning.
@@ -200,7 +200,7 @@ pub fn find_chess_corners_u8(
     height: u32,
     cfg: &ChessConfig,
 ) -> Vec<CornerDescriptor> {
-    let view = pyramid::ImageView::from_u8_slice(width, height, img)
+    let view = ImageView::from_u8_slice(width as usize, height as usize, img)
         .expect("image dimensions must match buffer length");
     multiscale::find_chess_corners(view, cfg)
 }
@@ -214,7 +214,7 @@ pub fn find_chess_corners_u8_with_refiner(
     cfg: &ChessConfig,
     refiner: &RefinerKind,
 ) -> Vec<CornerDescriptor> {
-    let view = pyramid::ImageView::from_u8_slice(width, height, img)
+    let view = ImageView::from_u8_slice(width as usize, height as usize, img)
         .expect("image dimensions must match buffer length");
     multiscale::find_chess_corners_with_refiner(view, cfg, refiner)
 }
