@@ -18,12 +18,12 @@
 //!   across frames in a tight loop.
 
 use crate::pyramid::{build_pyramid, PyramidBuffers, PyramidParams};
-use crate::ChessConfig;
+use crate::{ChessConfig, ChessParams};
 use chess_corners_core::descriptor::{corners_to_descriptors, Corner};
-use chess_corners_core::detect::{detect_corners_from_response_with_kind, merge_corners_simple};
+use chess_corners_core::detect::{detect_corners_from_response_with_refiner, merge_corners_simple};
 use chess_corners_core::response::{chess_response_u8, chess_response_u8_patch, Roi};
 use chess_corners_core::CornerDescriptor;
-use chess_corners_core::{ImageView, RefinerKind};
+use chess_corners_core::{CornerRefiner, ImageView, Refiner, RefinerKind, ResponseMap};
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 #[cfg(feature = "tracing")]
@@ -63,6 +63,20 @@ impl CoarseToFineParams {
     }
 }
 
+fn detect_with_refiner_kind(
+    resp: &ResponseMap,
+    params: &ChessParams,
+    image: Option<ImageView<'_>>,
+    refiner_kind: &RefinerKind,
+) -> Vec<Corner> {
+    let mut refiner = Refiner::from_kind(refiner_kind.clone());
+    detect_corners_from_response_with_refiner(resp, params, image, &mut refiner)
+}
+
+fn refiner_radius(refiner_kind: &RefinerKind) -> i32 {
+    Refiner::from_kind(refiner_kind.clone()).radius()
+}
+
 /// Detect corners using a caller-provided pyramid buffer.
 ///
 /// - When `cfg.multiscale.pyramid.num_levels <= 1`, this behaves as a
@@ -77,7 +91,7 @@ pub fn find_chess_corners_buff(
     cfg: &ChessConfig,
     buffers: &mut PyramidBuffers,
 ) -> Vec<CornerDescriptor> {
-    find_chess_corners_buff_with_refiner(base, cfg, buffers, &cfg.refiner)
+    find_chess_corners_buff_with_refiner(base, cfg, buffers, &cfg.params.refiner)
 }
 
 /// Variant of [`find_chess_corners_buff`] that accepts an explicit refiner selection.
@@ -112,8 +126,7 @@ pub fn find_chess_corners_buff_with_refiner(
             lvl.img.data,
         )
         .expect("image dimensions must match buffer length");
-        let mut raw =
-            detect_corners_from_response_with_kind(&resp, params, Some(refine_view), refiner);
+        let mut raw = detect_with_refiner_kind(&resp, params, Some(refine_view), refiner);
         let merged = merge_corners_simple(&mut raw, cf.merge_radius);
         let desc = corners_to_descriptors(
             lvl.img.data,
@@ -145,10 +158,8 @@ pub fn find_chess_corners_buff_with_refiner(
     let coarse_span = info_span!("coarse_detect", w = coarse_w, h = coarse_h).entered();
     // Full detection on coarse level
     let coarse_resp = chess_response_u8(coarse_lvl.img.data, coarse_w, coarse_h, params);
-    let coarse_view =
-        ImageView::from_u8_slice(coarse_w, coarse_h, coarse_lvl.img.data).unwrap();
-    let coarse_corners =
-        detect_corners_from_response_with_kind(&coarse_resp, params, Some(coarse_view), refiner);
+    let coarse_view = ImageView::from_u8_slice(coarse_w, coarse_h, coarse_lvl.img.data).unwrap();
+    let coarse_corners = detect_with_refiner_kind(&coarse_resp, params, Some(coarse_view), refiner);
     #[cfg(feature = "tracing")]
     drop(coarse_span);
 
@@ -161,7 +172,7 @@ pub fn find_chess_corners_buff_with_refiner(
     // Compute the same "border" margin as the core detector uses.
     let ring_r = params.ring_radius() as i32;
     let nms_r = params.nms_radius as i32;
-    let refine_r = 2i32; // 5x5 refinement window
+    let refine_r = refiner_radius(refiner);
     let border = (ring_r + nms_r + refine_r).max(0);
     // Require a bit of breathing room inside the image
     let safe_margin = border + 1;
@@ -197,8 +208,8 @@ pub fn find_chess_corners_buff_with_refiner(
         let mut x1 = cx + roi_r + 1;
         let mut y1 = cy + roi_r + 1;
 
-        // Clamp ROI to stay inside the area where full ring + 5x5 refinement
-        // are safe. This mirrors the detector's own border logic.
+        // Clamp ROI to stay inside the area where full ring + refinement
+        // footprint are safe. This mirrors the detector's own border logic.
         let min_xy = border;
         let max_x = base_w_i - border;
         let max_y = base_h_i - border;
@@ -249,7 +260,7 @@ pub fn find_chess_corners_buff_with_refiner(
         let refine_view = ImageView::with_origin(base_w, base_h, base.data, [x0, y0])
             .expect("base image dimensions must match buffer length");
         let mut patch_corners =
-            detect_corners_from_response_with_kind(&patch_resp, params, Some(refine_view), refiner);
+            detect_with_refiner_kind(&patch_resp, params, Some(refine_view), refiner);
 
         for pc in &mut patch_corners {
             pc.xy[0] += x0 as f32;
@@ -320,7 +331,7 @@ pub fn find_chess_corners_buff_with_refiner(
     )
 )]
 pub fn find_chess_corners(base: ImageView<'_>, cfg: &ChessConfig) -> Vec<CornerDescriptor> {
-    find_chess_corners_with_refiner(base, cfg, &cfg.refiner)
+    find_chess_corners_with_refiner(base, cfg, &cfg.params.refiner)
 }
 
 /// Single-call helper that lets callers pick the refiner.

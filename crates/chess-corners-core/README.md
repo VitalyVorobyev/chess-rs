@@ -19,17 +19,17 @@ Feature flags:
 Basic usage:
 
 ```rust
-use chess_corners_core::{detect::find_corners_u8_with_kind, ChessParams, RefinerKind};
+use chess_corners_core::{detect::find_corners_u8, ChessParams, RefinerKind};
 
 fn detect(img: &[u8], w: usize, h: usize) {
-    let params = ChessParams::default();
+    let mut params = ChessParams::default();
     // Default = center-of-mass refinement on the response map.
-    let corners = find_corners_u8_with_kind(img, w, h, &params, &RefinerKind::default());
+    let corners = find_corners_u8(img, w, h, &params);
     println!("found {} corners", corners.len());
 
     // Opt into Förstner or saddle-point refiners on the image intensities:
-    let forstner = RefinerKind::Forstner(Default::default());
-    let refined = find_corners_u8_with_kind(img, w, h, &params, &forstner);
+    params.refiner = RefinerKind::Forstner(Default::default());
+    let refined = find_corners_u8(img, w, h, &params);
     println!("found {} corners with Förstner", refined.len());
 }
 ```

@@ -1,7 +1,7 @@
 //! Corner detection utilities built on top of the dense ChESS response map.
 use crate::descriptor::{corners_to_descriptors, Corner, CornerDescriptor};
 use crate::imageview::ImageView;
-use crate::refine::{CornerRefiner, RefineContext, RefineStatus, Refiner, RefinerKind};
+use crate::refine::{CornerRefiner, RefineContext, RefineStatus, Refiner};
 use crate::response::chess_response_u8;
 use crate::{ChessParams, ResponseMap};
 
@@ -13,26 +13,14 @@ use tracing::instrument;
 /// This is a convenience that combines:
 /// - chess_response_u8 (dense response map)
 /// - thresholding + NMS
-/// - 5x5 center-of-mass subpixel refinement
+/// - subpixel refinement driven by [`ChessParams::refiner`]
 pub fn find_corners_u8(
     img: &[u8],
     w: usize,
     h: usize,
     params: &ChessParams,
 ) -> Vec<CornerDescriptor> {
-    let mut refiner = Refiner::from_kind(RefinerKind::default());
-    find_corners_u8_with_refiner(img, w, h, params, &mut refiner)
-}
-
-/// Convenience wrapper that accepts a caller-provided refiner config.
-pub fn find_corners_u8_with_kind(
-    img: &[u8],
-    w: usize,
-    h: usize,
-    params: &ChessParams,
-    refiner_kind: &RefinerKind,
-) -> Vec<CornerDescriptor> {
-    let mut refiner = Refiner::from_kind(refiner_kind.clone());
+    let mut refiner = Refiner::from_kind(params.refiner.clone());
     find_corners_u8_with_refiner(img, w, h, params, &mut refiner)
 }
 
@@ -62,7 +50,7 @@ pub fn find_corners_u8_with_refiner(
     instrument(level = "debug", skip(resp, params), fields(w = resp.w, h = resp.h))
 )]
 pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) -> Vec<Corner> {
-    let mut refiner = Refiner::from_kind(RefinerKind::default());
+    let mut refiner = Refiner::from_kind(params.refiner.clone());
     detect_corners_from_response_with_refiner(resp, params, None, &mut refiner)
 }
 
@@ -74,17 +62,6 @@ pub fn detect_corners_from_response_with_refiner(
     refiner: &mut dyn CornerRefiner,
 ) -> Vec<Corner> {
     detect_corners_from_response_impl(resp, params, image, refiner)
-}
-
-/// Convenience wrapper that builds a runtime refiner from a [`RefinerKind`].
-pub fn detect_corners_from_response_with_kind(
-    resp: &ResponseMap,
-    params: &ChessParams,
-    image: Option<ImageView<'_>>,
-    refiner_kind: &RefinerKind,
-) -> Vec<Corner> {
-    let mut refiner = Refiner::from_kind(refiner_kind.clone());
-    detect_corners_from_response_impl(resp, params, image, &mut refiner)
 }
 
 fn detect_corners_from_response_impl(
@@ -253,7 +230,9 @@ pub fn merge_corners_simple(corners: &mut Vec<Corner>, radius: f32) -> Vec<Corne
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::refine::{CenterOfMassConfig, CenterOfMassRefiner, RefineContext, RefineStatus};
+    use crate::refine::{
+        CenterOfMassConfig, CenterOfMassRefiner, RefineContext, RefineStatus, RefinerKind,
+    };
     use image::{GrayImage, Luma};
 
     fn make_quadrant_corner(size: u32, dark: u8, bright: u8) -> GrayImage {
@@ -346,6 +325,39 @@ mod tests {
         let c = &corners[0];
         assert!((c.xy[0] - expected.xy[0]).abs() < 1e-6);
         assert!((c.xy[1] - expected.xy[1]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn params_refiner_controls_margin() {
+        let mut resp = ResponseMap {
+            w: 30,
+            h: 30,
+            data: vec![0.0; 30 * 30],
+        };
+
+        let cx = 10usize;
+        let cy = 10usize;
+        let w = resp.w;
+
+        resp.data[cy * w + cx] = 10.0;
+        resp.data[cy * w + (cx + 1)] = 1.0;
+        resp.data[(cy + 1) * w + cx] = 1.0;
+
+        let mut params = ChessParams {
+            threshold_abs: Some(0.5),
+            threshold_rel: 0.0,
+            ..Default::default()
+        };
+
+        let baseline = detect_corners_from_response(&resp, &params);
+        assert_eq!(baseline.len(), 1, "expected baseline detection");
+
+        params.refiner = RefinerKind::CenterOfMass(CenterOfMassConfig { radius: 4 });
+        let shrunk = detect_corners_from_response(&resp, &params);
+        assert!(
+            shrunk.is_empty(),
+            "larger refiner radius should increase border and skip the corner"
+        );
     }
 
     #[test]

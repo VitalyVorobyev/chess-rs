@@ -98,9 +98,9 @@
 //!   behaves: number of pyramid levels, minimum level size, coarse
 //!   ROI radius (at the smallest level) and merge radius for
 //!   deduplicating refined corners.
-//! - [`RefinerKind`] selects the subpixel refinement backend
-//!   (center-of-mass default, Förstner, or saddle-point) and exposes
-//!   per-refiner tuning knobs.
+//! - [`RefinerKind`] (via [`ChessParams::refiner`]) selects the
+//!   subpixel refinement backend (center-of-mass default, Förstner,
+//!   or saddle-point) and exposes per-refiner tuning knobs.
 //!
 //! The shortcut [`ChessConfig::single_scale`] configures a
 //! single-scale run by setting `multiscale.pyramid.num_levels = 1`.
@@ -145,8 +145,8 @@ mod pyramid;
 // need lower-level primitives (rings, raw response functions, etc.) are
 // encouraged to depend on `chess-corners-core` directly.
 pub use chess_corners_core::{
-    CenterOfMassConfig, ChessParams, CornerDescriptor, CornerRefiner, ForstnerConfig, RefineResult,
-    RefineStatus, Refiner, RefinerKind, ResponseMap, SaddlePointConfig, ImageView
+    CenterOfMassConfig, ChessParams, CornerDescriptor, CornerRefiner, ForstnerConfig, ImageView,
+    RefineResult, RefineStatus, Refiner, RefinerKind, ResponseMap, SaddlePointConfig,
 };
 
 // High-level helpers on `image::GrayImage`.
@@ -167,14 +167,11 @@ pub use crate::pyramid::PyramidBuffers;
 #[derive(Clone, Debug, Default)]
 pub struct ChessConfig {
     /// Low-level ChESS response/detector parameters (ring radius, thresholds,
-    /// NMS radius, minimum cluster size).
+    /// NMS radius, minimum cluster size, and subpixel refinement backend).
     pub params: ChessParams,
     /// Coarse-to-fine multiscale configuration (pyramid shape, ROI radius,
     /// merge radius).
     pub multiscale: CoarseToFineParams,
-    /// Subpixel refiner selection and tuning. Defaults to the legacy
-    /// center-of-mass refiner on the response map.
-    pub refiner: RefinerKind,
 }
 
 impl ChessConfig {

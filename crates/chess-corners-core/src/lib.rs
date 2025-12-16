@@ -77,6 +77,9 @@ pub struct ChessParams {
     /// Minimum count of positive-response neighbors in NMS window
     /// to accept a corner (rejects isolated noise).
     pub min_cluster_size: u32,
+    /// Subpixel refinement backend and its configuration. Defaults to the legacy
+    /// center-of-mass refiner on the response map.
+    pub refiner: RefinerKind,
 }
 
 impl Default for ChessParams {
@@ -88,6 +91,7 @@ impl Default for ChessParams {
             threshold_abs: None,
             nms_radius: 2,
             min_cluster_size: 2,
+            refiner: RefinerKind::default(),
         }
     }
 }

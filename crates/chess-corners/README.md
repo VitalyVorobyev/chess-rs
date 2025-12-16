@@ -8,8 +8,8 @@ This crate:
 - Re-exports the main types from `chess-corners-core` (`ChessParams`, `CornerDescriptor`, `ResponseMap`).
 - Provides a unified `ChessConfig` for single-scale and multiscale detection.
 - Adds optional `image::GrayImage` integration and a small CLI binary for batch runs.
-- Exposes pluggable subpixel refiners (`RefinerKind`) so you can choose between
-  center-of-mass (default), Förstner, or saddle-point refinement.
+- Exposes pluggable subpixel refiners (`RefinerKind` via `ChessParams::refiner`) so you can choose
+  between center-of-mass (default), Förstner, or saddle-point refinement.
 
 ## Examples
 
@@ -39,17 +39,18 @@ The default refiner matches the legacy center-of-mass behavior. To opt into the
 Förstner or saddle-point refiners on image intensities:
 
 ```rust
-use chess_corners::{ChessConfig, ChessParams, RefinerKind, find_chess_corners_image_with_refiner};
+use chess_corners::{ChessConfig, ChessParams, RefinerKind, find_chess_corners_image};
 
 let mut cfg = ChessConfig::single_scale();
 cfg.params = ChessParams::default();
 
 let refiner = RefinerKind::Forstner(Default::default());
-let corners = find_chess_corners_image_with_refiner(&img, &cfg, &refiner);
+cfg.params.refiner = refiner;
+let corners = find_chess_corners_image(&img, &cfg);
 ```
 
-`ChessConfig` also carries a `refiner` field; set it once on the config to reuse
-the same refiner across calls.
+You can also override the refiner per call without mutating your config via
+`find_chess_corners_image_with_refiner`.
 
 You can also try the bundled examples on sample images in `testimages/`:
 
