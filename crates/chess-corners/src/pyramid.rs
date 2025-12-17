@@ -5,64 +5,29 @@
 //! intermediate levels. When both the `par_pyramid` and `simd` features are
 //! enabled, the 2× box downsample uses portable SIMD for higher throughput.
 
+use chess_corners_core::ImageView;
 #[cfg(feature = "tracing")]
 use tracing::instrument;
-
-/// Borrowed grayscale image view (u8).
-#[derive(Clone, Copy, Debug)]
-pub struct ImageView<'a> {
-    pub width: u32,
-    pub height: u32,
-    pub data: &'a [u8],
-}
-
-impl<'a> ImageView<'a> {
-    pub fn from_u8_slice(width: u32, height: u32, data: &'a [u8]) -> Option<Self> {
-        if (width as usize).saturating_mul(height as usize) != data.len() {
-            return None;
-        }
-        Some(Self {
-            width,
-            height,
-            data,
-        })
-    }
-}
-
-#[cfg(feature = "image")]
-impl<'a> From<&'a image::GrayImage> for ImageView<'a> {
-    fn from(img: &'a image::GrayImage) -> Self {
-        ImageView {
-            width: img.width(),
-            height: img.height(),
-            data: img.as_raw(),
-        }
-    }
-}
 
 /// Owned grayscale image buffer (u8).
 #[derive(Clone, Debug)]
 pub struct ImageBuffer {
-    pub width: u32,
-    pub height: u32,
+    pub width: usize,
+    pub height: usize,
     pub data: Vec<u8>,
 }
 
 impl ImageBuffer {
-    pub fn new(width: u32, height: u32) -> Self {
+    pub fn new(width: usize, height: usize) -> Self {
         Self {
             width,
             height,
-            data: vec![0; width.saturating_mul(height) as usize],
+            data: vec![0; width.saturating_mul(height)],
         }
     }
 
     pub fn as_view(&self) -> ImageView<'_> {
-        ImageView {
-            width: self.width,
-            height: self.height,
-            data: &self.data,
-        }
+        ImageView::from_u8_slice(self.width, self.height, &self.data).unwrap()
     }
 }
 
@@ -96,7 +61,7 @@ impl PyramidBuffers {
         }
     }
 
-    fn ensure_level_shape(&mut self, idx: usize, w: u32, h: u32) {
+    fn ensure_level_shape(&mut self, idx: usize, w: usize, h: usize) {
         if idx >= self.levels.len() {
             self.levels.resize_with(idx + 1, || ImageBuffer::new(w, h));
         }
@@ -125,7 +90,7 @@ pub struct PyramidParams {
     /// Maximum number of levels (including the base).
     pub num_levels: u8,
     /// Stop building when either dimension falls below this value.
-    pub min_size: u32,
+    pub min_size: usize,
 }
 
 impl Default for PyramidParams {
@@ -250,9 +215,9 @@ fn downsample_2x_box_scalar(src: ImageView<'_>, dst: &mut ImageBuffer) {
     debug_assert_eq!(src.width / 2, dst.width);
     debug_assert_eq!(src.height / 2, dst.height);
 
-    let src_w = src.width as usize;
-    let dst_w = dst.width as usize;
-    let dst_h = dst.height as usize;
+    let src_w = src.width;
+    let dst_w = dst.width;
+    let dst_h = dst.height;
 
     for y in 0..dst_h {
         let row0 = (y * 2) * src_w;
@@ -271,9 +236,9 @@ fn downsample_2x_box_simd(src: ImageView<'_>, dst: &mut ImageBuffer) {
     debug_assert_eq!(src.width / 2, dst.width);
     debug_assert_eq!(src.height / 2, dst.height);
 
-    let src_w = src.width as usize;
-    let dst_w = dst.width as usize;
-    let dst_h = dst.height as usize;
+    let src_w = src.width;
+    let dst_w = dst.width;
+    let dst_h = dst.height;
 
     for y_out in 0..dst_h {
         let y0 = 2 * y_out;
@@ -295,8 +260,8 @@ fn downsample_2x_box_parallel_scalar(src: ImageView<'_>, dst: &mut ImageBuffer) 
     debug_assert_eq!(src.width / 2, dst.width);
     debug_assert_eq!(src.height / 2, dst.height);
 
-    let src_w = src.width as usize;
-    let dst_w = dst.width as usize;
+    let src_w = src.width;
+    let dst_w = dst.width;
 
     dst.data
         .par_chunks_mut(dst_w)
@@ -319,8 +284,8 @@ fn downsample_2x_box_parallel_simd(src: ImageView<'_>, dst: &mut ImageBuffer) {
     debug_assert_eq!(src.width / 2, dst.width);
     debug_assert_eq!(src.height / 2, dst.height);
 
-    let src_w = src.width as usize;
-    let dst_w = dst.width as usize;
+    let src_w = src.width;
+    let dst_w = dst.width;
 
     dst.data
         .par_chunks_mut(dst_w)
@@ -407,8 +372,8 @@ mod tests {
     #[cfg(feature = "image")]
     fn gray_to_buffer(img: &image::GrayImage) -> ImageBuffer {
         ImageBuffer {
-            width: img.width(),
-            height: img.height(),
+            width: img.width() as usize,
+            height: img.height() as usize,
             data: img.as_raw().clone(),
         }
     }

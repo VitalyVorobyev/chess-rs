@@ -5,7 +5,9 @@
 //! share the same behavior.
 
 use anyhow::{Context, Result};
-use chess_corners::{find_chess_corners_image, ChessConfig, ChessParams, CoarseToFineParams};
+use chess_corners::{
+    find_chess_corners_image, ChessConfig, ChessParams, CoarseToFineParams, RefinerKind,
+};
 use image::{ImageBuffer, ImageReader, Luma};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Write, path::Path, path::PathBuf};
@@ -21,6 +23,8 @@ pub struct DetectionConfig {
     pub output_png: Option<PathBuf>,
     pub threshold_rel: Option<f32>,
     pub threshold_abs: Option<f32>,
+    /// Subpixel refiner selection (center_of_mass, forstner, saddle_point).
+    pub refiner: Option<RefinerMethod>,
     /// Optional absolute ring radius (5 or 10) for the detector.
     /// When present, this maps to `ChessParams::use_radius10` (10 ⇒ true, 5 ⇒ false).
     pub radius: Option<u32>,
@@ -35,14 +39,30 @@ pub struct DetectionConfig {
     pub log_level: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefinerMethod {
+    CenterOfMass,
+    Forstner,
+    SaddlePoint,
+}
+
+impl RefinerMethod {
+    fn to_refiner_kind(&self) -> RefinerKind {
+        match self {
+            RefinerMethod::CenterOfMass => RefinerKind::CenterOfMass(Default::default()),
+            RefinerMethod::Forstner => RefinerKind::Forstner(Default::default()),
+            RefinerMethod::SaddlePoint => RefinerKind::SaddlePoint(Default::default()),
+        }
+    }
+}
+
 #[derive(Serialize)]
 pub struct CornerOut {
     pub x: f32,
     pub y: f32,
     pub response: f32,
     pub orientation: f32,
-    pub phase: u8,
-    pub anisotropy: f32,
 }
 
 #[derive(Serialize)]
@@ -86,7 +106,7 @@ pub fn run_detection(cfg: DetectionConfig) -> Result<()> {
         width: img.width(),
         height: img.height(),
         pyramid_levels: levels,
-        min_size,
+        min_size: min_size as u32,
         roi_radius,
         merge_radius,
         corners: corners
@@ -96,8 +116,6 @@ pub fn run_detection(cfg: DetectionConfig) -> Result<()> {
                 y: c.y,
                 response: c.response,
                 orientation: c.orientation,
-                phase: c.phase,
-                anisotropy: c.anisotropy,
             })
             .collect(),
     };
@@ -141,6 +159,9 @@ fn apply_params_overrides(params: &mut ChessParams, cfg: &DetectionConfig) -> Re
     if let Some(r) = cfg.descriptor_radius10 {
         params.descriptor_use_radius10 = Some(r);
     }
+    if let Some(refiner) = cfg.refiner.as_ref() {
+        params.refiner = refiner.to_refiner_kind();
+    }
     if let Some(t) = cfg.threshold_rel {
         params.threshold_rel = t;
     }
@@ -169,7 +190,7 @@ fn apply_multiscale_overrides(cf: &mut CoarseToFineParams, cfg: &DetectionConfig
         if v == 0 {
             anyhow::bail!("min-size must be >= 1");
         }
-        cf.pyramid.min_size = v;
+        cf.pyramid.min_size = v as usize;
     }
     if let Some(v) = cfg.roi_radius {
         if v == 0 {

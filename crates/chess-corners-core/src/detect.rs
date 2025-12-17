@@ -1,5 +1,7 @@
 //! Corner detection utilities built on top of the dense ChESS response map.
 use crate::descriptor::{corners_to_descriptors, Corner, CornerDescriptor};
+use crate::imageview::ImageView;
+use crate::refine::{CornerRefiner, RefineContext, RefineStatus, Refiner};
 use crate::response::chess_response_u8;
 use crate::{ChessParams, ResponseMap};
 
@@ -11,15 +13,29 @@ use tracing::instrument;
 /// This is a convenience that combines:
 /// - chess_response_u8 (dense response map)
 /// - thresholding + NMS
-/// - 5x5 center-of-mass subpixel refinement
+/// - subpixel refinement driven by [`ChessParams::refiner`]
 pub fn find_corners_u8(
     img: &[u8],
     w: usize,
     h: usize,
     params: &ChessParams,
 ) -> Vec<CornerDescriptor> {
+    let mut refiner = Refiner::from_kind(params.refiner.clone());
+    find_corners_u8_with_refiner(img, w, h, params, &mut refiner)
+}
+
+/// Compute corners starting from an 8-bit grayscale image using a custom refiner.
+pub fn find_corners_u8_with_refiner(
+    img: &[u8],
+    w: usize,
+    h: usize,
+    params: &ChessParams,
+    refiner: &mut dyn CornerRefiner,
+) -> Vec<CornerDescriptor> {
     let resp = chess_response_u8(img, w, h, params);
-    let corners = detect_corners_from_response(&resp, params);
+    let image =
+        ImageView::from_u8_slice(w, h, img).expect("image dimensions must match buffer length");
+    let corners = detect_corners_from_response_with_refiner(&resp, params, Some(image), refiner);
     let desc_radius = params.descriptor_ring_radius();
     corners_to_descriptors(img, w, h, desc_radius, corners)
 }
@@ -29,11 +45,31 @@ pub fn find_corners_u8(
 /// Useful if you want to reuse the response map for debugging or tuning. Honors
 /// relative vs absolute thresholds, enforces the configurable NMS radius, and
 /// rejects isolated responses via `min_cluster_size`.
+pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) -> Vec<Corner> {
+    let mut refiner = Refiner::from_kind(params.refiner.clone());
+    detect_corners_from_response_with_refiner(resp, params, None, &mut refiner)
+}
+
+/// Detector variant that accepts a user-provided refiner implementation.
+pub fn detect_corners_from_response_with_refiner(
+    resp: &ResponseMap,
+    params: &ChessParams,
+    image: Option<ImageView<'_>>,
+    refiner: &mut dyn CornerRefiner,
+) -> Vec<Corner> {
+    detect_corners_from_response_impl(resp, params, image, refiner)
+}
+
 #[cfg_attr(
     feature = "tracing",
-    instrument(level = "debug", skip(resp, params), fields(w = resp.w, h = resp.h))
+    instrument(level = "debug", skip(resp, params, image, refiner), fields(w = resp.w, h = resp.h))
 )]
-pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) -> Vec<Corner> {
+fn detect_corners_from_response_impl(
+    resp: &ResponseMap,
+    params: &ChessParams,
+    image: Option<ImageView<'_>>,
+    refiner: &mut dyn CornerRefiner,
+) -> Vec<Corner> {
     let w = resp.w;
     let h = resp.h;
 
@@ -60,12 +96,12 @@ pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) ->
     }
 
     let nms_r = params.nms_radius as i32;
-    let refine_r = 2i32; // 5x5 window
+    let refine_r = refiner.radius();
     let ring_r = params.ring_radius() as i32;
 
     // We need to stay away from the borders enough to:
     // - have a full NMS window
-    // - have a full 5x5 refinement window
+    // - have a full refinement window
     // The response map itself is valid in [ring_r .. w-ring_r), but
     // we don't want to sample outside [0..w/h) during refinement.
     let border = (ring_r + nms_r + refine_r).max(0) as usize;
@@ -75,6 +111,10 @@ pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) ->
     }
 
     let mut corners = Vec::new();
+    let ctx = RefineContext {
+        image,
+        response: Some(resp),
+    };
 
     for y in border..(h - border) {
         for x in border..(w - border) {
@@ -95,12 +135,15 @@ pub fn detect_corners_from_response(resp: &ResponseMap, params: &ChessParams) ->
                 continue;
             }
 
-            let sub_xy = refine_com_5x5(resp, x, y);
+            let seed_xy = [x as f32, y as f32];
+            let res = refiner.refine(seed_xy, ctx);
 
-            corners.push(Corner {
-                xy: sub_xy,
-                strength: v,
-            });
+            if matches!(res.status, RefineStatus::Accepted) {
+                corners.push(Corner {
+                    xy: res.xy,
+                    strength: v,
+                });
+            }
         }
     }
 
@@ -159,39 +202,6 @@ fn count_positive_neighbors(resp: &ResponseMap, x: usize, y: usize, r: i32) -> u
     count
 }
 
-/// 5x5 center-of-mass refinement around an integer peak.
-///
-/// We use only non-negative responses (max(0, R)) so that negative sidelobes
-/// don’t bias the estimate.
-fn refine_com_5x5(resp: &ResponseMap, x: usize, y: usize) -> [f32; 2] {
-    let mut sx = 0.0;
-    let mut sy = 0.0;
-    let mut sw = 0.0;
-
-    let w = resp.w;
-    let h = resp.h;
-
-    // We assume caller has ensured x,y are at least 2 pixels away from borders.
-    // Still, we clamp indices defensively in case params are mis-set.
-    for dy in -2i32..=2 {
-        for dx in -2i32..=2 {
-            let xx = (x as i32 + dx).clamp(0, (w - 1) as i32) as usize;
-            let yy = (y as i32 + dy).clamp(0, (h - 1) as i32) as usize;
-
-            let w_px = resp.at(xx, yy).max(0.0);
-            sx += (xx as f32) * w_px;
-            sy += (yy as f32) * w_px;
-            sw += w_px;
-        }
-    }
-
-    if sw > 0.0 {
-        [sx / sw, sy / sw]
-    } else {
-        [x as f32, y as f32]
-    }
-}
-
 /// Merge corners within a given radius, keeping the strongest response.
 #[cfg_attr(feature = "tracing", instrument(level = "info", skip(corners)))]
 pub fn merge_corners_simple(corners: &mut Vec<Corner>, radius: f32) -> Vec<Corner> {
@@ -220,6 +230,9 @@ pub fn merge_corners_simple(corners: &mut Vec<Corner>, radius: f32) -> Vec<Corne
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::refine::{
+        CenterOfMassConfig, CenterOfMassRefiner, RefineContext, RefineStatus, RefinerKind,
+    };
     use image::{GrayImage, Luma};
 
     fn make_quadrant_corner(size: u32, dark: u8, bright: u8) -> GrayImage {
@@ -238,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn descriptors_report_orientation_and_phase() {
+    fn descriptors_report_orientation_is_stable() {
         let size = 32u32;
         let params = ChessParams {
             threshold_rel: 0.01,
@@ -274,7 +287,83 @@ mod tests {
             .expect("non-empty brighter");
 
         assert!((best.x - best_brighter.x).abs() < 0.5 && (best.y - best_brighter.y).abs() < 0.5);
-        assert_eq!(best.phase, best_brighter.phase);
+
+        let dtheta = (best.orientation - best_brighter.orientation).abs();
+        let dtheta = dtheta.min(core::f32::consts::PI - dtheta);
+        assert!(
+            dtheta < 0.35,
+            "unexpected orientation delta after brightness shift: {dtheta}"
+        );
+    }
+
+    #[test]
+    fn default_refiner_matches_center_of_mass() {
+        let mut resp = ResponseMap {
+            w: 32,
+            h: 32,
+            data: vec![0.0; 32 * 32],
+        };
+
+        let cx = 16usize;
+        let cy = 16usize;
+        let w = resp.w;
+
+        resp.data[cy * w + cx] = 10.0;
+        resp.data[cy * w + (cx + 1)] = 6.0;
+        resp.data[(cy + 1) * w + cx] = 5.0;
+        resp.data[(cy + 1) * w + (cx + 1)] = 4.0;
+
+        let params = ChessParams {
+            threshold_rel: 0.01,
+            ..Default::default()
+        };
+
+        let mut refiner = CenterOfMassRefiner::new(CenterOfMassConfig::default());
+        let ctx = RefineContext {
+            image: None,
+            response: Some(&resp),
+        };
+        let expected = refiner.refine([cx as f32, cy as f32], ctx);
+        assert_eq!(expected.status, RefineStatus::Accepted);
+
+        let corners = detect_corners_from_response(&resp, &params);
+        assert_eq!(corners.len(), 1);
+        let c = &corners[0];
+        assert!((c.xy[0] - expected.xy[0]).abs() < 1e-6);
+        assert!((c.xy[1] - expected.xy[1]).abs() < 1e-6);
+    }
+
+    #[test]
+    fn params_refiner_controls_margin() {
+        let mut resp = ResponseMap {
+            w: 30,
+            h: 30,
+            data: vec![0.0; 30 * 30],
+        };
+
+        let cx = 10usize;
+        let cy = 10usize;
+        let w = resp.w;
+
+        resp.data[cy * w + cx] = 10.0;
+        resp.data[cy * w + (cx + 1)] = 1.0;
+        resp.data[(cy + 1) * w + cx] = 1.0;
+
+        let mut params = ChessParams {
+            threshold_abs: Some(0.5),
+            threshold_rel: 0.0,
+            ..Default::default()
+        };
+
+        let baseline = detect_corners_from_response(&resp, &params);
+        assert_eq!(baseline.len(), 1, "expected baseline detection");
+
+        params.refiner = RefinerKind::CenterOfMass(CenterOfMassConfig { radius: 4 });
+        let shrunk = detect_corners_from_response(&resp, &params);
+        assert!(
+            shrunk.is_empty(),
+            "larger refiner radius should increase border and skip the corner"
+        );
     }
 
     #[test]
