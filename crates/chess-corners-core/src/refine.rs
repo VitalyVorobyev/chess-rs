@@ -59,7 +59,7 @@ pub enum RefinerKind {
 
 impl Default for RefinerKind {
     fn default() -> Self {
-        Self::CenterOfMass(CenterOfMassConfig::default())
+        Self::Forstner(ForstnerConfig::default())
     }
 }
 

@@ -110,6 +110,7 @@ The config JSON drives both single-scale and multiscale runs:
   "output_png": null,
   "threshold_rel": 0.2,
   "threshold_abs": null,
+  "refiner": "forstner",
   "radius": 5,
   "descriptor_radius": null,
   "nms_radius": 2,
@@ -119,7 +120,7 @@ The config JSON drives both single-scale and multiscale runs:
 ```
 
 - `pyramid_levels`, `min_size`, `roi_radius`, `merge_radius`: multiscale controls (`pyramid_levels <= 1` behaves as single-scale; larger values request a multiscale coarse-to-fine run, with `min_size` limiting how deep the pyramid goes)
-- `threshold_rel` / `threshold_abs`, `radius` / `descriptor_radius`, `nms_radius`, `min_cluster_size`: detector + descriptor tuning (`descriptor_radius` falls back to `radius` when null)
+- `threshold_rel` / `threshold_abs`, `refiner`, `radius` / `descriptor_radius`, `nms_radius`, `min_cluster_size`: detector + descriptor tuning (`refiner` accepts `center_of_mass`, `forstner`, or `saddle_point`; `descriptor_radius` falls back to `radius` when null)
 - `output_json` / `output_png`: override output paths (defaults next to the image)
 
 You can override many fields via CLI flags (e.g., `--levels 1 --min_size 64 --output_json out.json`).

@@ -5,7 +5,9 @@
 //! share the same behavior.
 
 use anyhow::{Context, Result};
-use chess_corners::{find_chess_corners_image, ChessConfig, ChessParams, CoarseToFineParams};
+use chess_corners::{
+    find_chess_corners_image, ChessConfig, ChessParams, CoarseToFineParams, RefinerKind,
+};
 use image::{ImageBuffer, ImageReader, Luma};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Write, path::Path, path::PathBuf};
@@ -21,6 +23,8 @@ pub struct DetectionConfig {
     pub output_png: Option<PathBuf>,
     pub threshold_rel: Option<f32>,
     pub threshold_abs: Option<f32>,
+    /// Subpixel refiner selection (center_of_mass, forstner, saddle_point).
+    pub refiner: Option<RefinerMethod>,
     /// Optional absolute ring radius (5 or 10) for the detector.
     /// When present, this maps to `ChessParams::use_radius10` (10 ⇒ true, 5 ⇒ false).
     pub radius: Option<u32>,
@@ -33,6 +37,24 @@ pub struct DetectionConfig {
     pub nms_radius: Option<u32>,
     pub min_cluster_size: Option<u32>,
     pub log_level: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefinerMethod {
+    CenterOfMass,
+    Forstner,
+    SaddlePoint,
+}
+
+impl RefinerMethod {
+    fn to_refiner_kind(&self) -> RefinerKind {
+        match self {
+            RefinerMethod::CenterOfMass => RefinerKind::CenterOfMass(Default::default()),
+            RefinerMethod::Forstner => RefinerKind::Forstner(Default::default()),
+            RefinerMethod::SaddlePoint => RefinerKind::SaddlePoint(Default::default()),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -140,6 +162,9 @@ fn apply_params_overrides(params: &mut ChessParams, cfg: &DetectionConfig) -> Re
     }
     if let Some(r) = cfg.descriptor_radius10 {
         params.descriptor_use_radius10 = Some(r);
+    }
+    if let Some(refiner) = cfg.refiner.as_ref() {
+        params.refiner = refiner.to_refiner_kind();
     }
     if let Some(t) = cfg.threshold_rel {
         params.threshold_rel = t;

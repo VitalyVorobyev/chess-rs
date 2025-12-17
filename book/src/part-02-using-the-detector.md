@@ -227,9 +227,11 @@ The exact fields are defined by `DetectionConfig` in
   `pyramid_levels <= 1` the detector behaves as single‑scale, and
   larger values request a coarse‑to‑fine multiscale run, bounded by
   `min_size`).
-- `threshold_rel`, `threshold_abs`, `radius10`,
+- `threshold_rel`, `threshold_abs`, `refiner`, `radius10`,
   `descriptor_radius10`, `nms_radius`, `min_cluster_size` – detector
-  tuning (mapped onto `ChessParams`).
+  tuning (mapped onto `ChessParams`; `refiner` accepts
+  `center_of_mass`, `forstner`, or `saddle_point` and uses default
+  settings for each choice).
 - `output_json`, `output_png` – output paths; when omitted, defaults
   are derived from the image filename.
 
