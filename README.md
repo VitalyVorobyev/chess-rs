@@ -4,17 +4,74 @@
 [![Security audit](https://github.com/VitalyVorobyev/chess-corners-rs/actions/workflows/audit.yml/badge.svg)](https://github.com/VitalyVorobyev/chess-corners-rs/actions/workflows/audit.yml)
 [![Docs](https://github.com/VitalyVorobyev/chess-corners-rs/actions/workflows/docs.yml/badge.svg)](https://vitalyvorobyev.github.io/chess-corners-rs/)
 
-Fast, deterministic Rust implementation of the [**ChESS**](https://arxiv.org/abs/1301.5491)
+Fast Rust implementation of the [**ChESS**](https://arxiv.org/abs/1301.5491)
 (Chess-board Extraction by Subtraction and Summation) corner detector.
 
 ![](book/src/img/mid_chess.png)
 
 ([image source](https://www.kaggle.com/datasets/danielwe14/stereocamera-chessboard-pictures))
 
-ChESS is a classical, ID-free **feature detector** for chessboard / checkerboard
-**X-junction** corners (including ChArUco-style boards). This workspace focuses
-on **deterministic outputs**, **subpixel accuracy**, and **real-time
+ChESS is a classical (not ML) **feature detector** for chessboard
+**X-junction** corners. This project focuses
+on **convenient use**, **subpixel accuracy**, and **real-time
 performance** (scalar, `rayon`, and portable SIMD paths).
+
+## Quick start
+
+```rust
+use chess_corners::{ChessConfig, find_chess_corners_image};
+use image::ImageReader;
+
+let img = ImageReader::open("board.png")?.decode()?.to_luma8();
+let cfg = ChessConfig::single_scale();
+
+let corners = find_chess_corners_image(&img, &cfg);
+println!("found {} corners", corners.len());
+if let Some(c) = corners.first() {
+    println!(
+        "corner at ({:.2}, {:.2}), response {:.1}, theta {:.2} rad",
+        c.x, c.y, c.response, c.orientation
+    );
+}
+```
+
+## Configuring `ChessConfig` (Rust API)
+
+`find_chess_corners_image` (enabled by the default `image` feature) is configured via `ChessConfig`, a small struct that groups:
+
+- `cfg.params: ChessParams` — ChESS response + detector knobs (ring radius, thresholding, NMS/clustering, and the subpixel refiner).
+- `cfg.multiscale: CoarseToFineParams` — coarse-to-fine pyramid settings (levels/min size) plus ROI/merge tuning for multiscale refinement.
+
+Single-scale vs multiscale is controlled by `cfg.multiscale.pyramid.num_levels`:
+
+- `<= 1`: single-scale detection (same as `ChessConfig::single_scale()`).
+- `> 1`: coarse-to-fine detection (the default `ChessConfig::default()` uses 3 levels).
+
+Common knobs you may want to adjust:
+
+- Sensitivity: `cfg.params.threshold_rel` (recommended) or `cfg.params.threshold_abs` (absolute override).
+- Blur / very small boards: `cfg.params.use_radius10 = true` (uses the r=10 ring instead of r=5).
+- Subpixel refinement: `cfg.params.refiner = RefinerKind::Forstner(ForstnerConfig::default())` (alternatives: `CenterOfMass`, `SaddlePoint`).
+- Multiscale trade-offs: `cfg.multiscale.pyramid.min_size`, `cfg.multiscale.refinement_radius`, `cfg.multiscale.merge_radius`.
+
+Example:
+
+```rust
+use chess_corners::{ChessConfig, ForstnerConfig, RefinerKind, find_chess_corners_image};
+use image::ImageReader;
+
+let img = ImageReader::open("board.png")?.decode()?.to_luma8();
+
+let mut cfg = ChessConfig::default(); // default: 3-level multiscale
+cfg.params.threshold_rel = 0.15;
+cfg.params.refiner = RefinerKind::Forstner(ForstnerConfig::default());
+
+// Force single-scale:
+// cfg.multiscale.pyramid.num_levels = 1;
+
+let corners = find_chess_corners_image(&img, &cfg);
+println!("found {} corners", corners.len());
+```
 
 ## Performance snapshot
 
@@ -31,7 +88,7 @@ recommended 3-level multiscale pipeline:
 (`simd` uses portable SIMD and currently requires a nightly Rust toolchain.)
 
 On a public stereo chessboard dataset, the mean nearest-neighbor distance to
-OpenCV’s `findChessboardCornersSB` corners is ≈ **0.21 px** (see the book for
+OpenCV’s `findChessboardCornersSB` corners is below ≈ **0.2 px** (see the book for
 methodology and plots).
 
 See [`book/src/part-05-performance-and-integration.md`](book/src/part-05-performance-and-integration.md) for the full breakdown,
@@ -69,36 +126,6 @@ chess-corners-core = "0.2"
 
 The `chess-corners` crate enables the `image` feature by default so you can work with `image::GrayImage`; disable it if you prefer to stay on raw buffers.
 
-## Quick start
-
-```rust
-use chess_corners::{ChessConfig, find_chess_corners_image};
-use image::ImageReader;
-
-let img = ImageReader::open("board.png")?.decode()?.to_luma8();
-let cfg = ChessConfig::single_scale();
-
-let corners = find_chess_corners_image(&img, &cfg);
-println!("found {} corners", corners.len());
-if let Some(c) = corners.first() {
-    println!(
-        "corner at ({:.2}, {:.2}), response {:.1}, theta {:.2} rad",
-        c.x, c.y, c.response, c.orientation
-    );
-}
-```
-
-Need timings for profiling? Enable the `tracing` feature.
-
-The multiscale path uses a coarse detector on the smallest pyramid level and
-refines each seed in a base-image ROI. The ROI radius is specified in
-coarse-level pixels and is automatically converted to a radius in base pixels,
-with a minimum margin derived from the ChESS detector’s own border logic. Both
-full-frame and ROI response computations honor the `rayon`/`simd` features so
-patch refinement benefits from the same SIMD and parallelism as the dense
-response path. Pyramid downsampling stays scalar unless the `par_pyramid`
-feature is enabled alongside `simd` and/or `rayon`.
-
 ### Examples
 
 The `chess-corners` crate ships small examples that operate directly on `image::GrayImage` inputs and use the sample images under `testimages/`:
@@ -129,24 +156,33 @@ The config JSON drives both single-scale and multiscale runs:
   "image": "testimages/mid.png",
   "pyramid_levels": 3,
   "min_size": 64,
-  "roi_radius": 3,
+  "refinement_radius": 3,
   "merge_radius": 3.0,
   "output_json": null,
   "output_png": null,
   "threshold_rel": 0.2,
   "threshold_abs": null,
   "refiner": "forstner",
-  "radius": 5,
-  "descriptor_radius": null,
+  "radius10": false,
+  "descriptor_radius10": null,
   "nms_radius": 2,
   "min_cluster_size": 2,
   "log_level": "info"
 }
 ```
 
-- `pyramid_levels`, `min_size`, `roi_radius`, `merge_radius`: multiscale controls (`pyramid_levels <= 1` behaves as single-scale; larger values request a multiscale coarse-to-fine run, with `min_size` limiting how deep the pyramid goes)
-- `threshold_rel` / `threshold_abs`, `refiner`, `radius` / `descriptor_radius`, `nms_radius`, `min_cluster_size`: detector + descriptor tuning (`refiner` accepts `center_of_mass`, `forstner`, or `saddle_point`; `descriptor_radius` falls back to `radius` when null)
-- `output_json` / `output_png`: override output paths (defaults next to the image)
+- **Multiscale control**
+  - `pyramid_levels`: number of pyramid levels (`<= 1` behaves as single-scale; larger values enable coarse-to-fine refinement)
+  - `min_size`: smallest image size allowed in the pyramid (limits how deep the pyramid goes)
+  - `refinement_radius`, `merge_radius`: multiscale refinement and deduplication
+- **Detection and refinement**
+  - `threshold_rel` / `threshold_abs`: response thresholding (relative thresholding is recommended in most cases)
+  - `refiner`: subpixel refinement method (`center_of_mass`, `forstner`, or `saddle_point`)
+  - `radius10`: use the larger r=10 ring instead of the canonical r=5 ring
+  - `descriptor_radius10`: optional r=10 override for descriptors (when null, follows `radius10`)
+  - `nms_radius`, `min_cluster_size`: suppression and clustering
+- **Output**
+  - `output_json` / `output_png`: override output paths (defaults next to the image)
 
 You can override many fields via CLI flags (e.g., `--levels 1 --min_size 64 --output_json out.json`).
 
@@ -160,12 +196,12 @@ only need to touch a few knobs:
   - `min_size`: controls how deep the pyramid goes; smaller values allow detecting smaller boards but cost more.
   - `threshold_rel`: main sensitivity knob (lower = more corners, higher = fewer/stronger corners).
   - `refiner`: `forstner` / `saddle_point` can improve localization vs `center_of_mass` (trade-offs depend on blur/noise).
-  - `radius`: use `10` for heavy blur / very small boards; otherwise `5`.
-  - `roi_radius` + `merge_radius` (multiscale): increase `roi_radius` if refinement misses corners; adjust `merge_radius` (typically `2–3`) if you see duplicates.
+  - `radius10`: set `true` for heavy blur / very small boards; otherwise keep `false`.
+  - `refinement_radius` + `merge_radius` (multiscale): increase `refinement_radius` if refinement misses corners; adjust `merge_radius` (typically `2–3`) if you see duplicates.
 
-- **Usually don’t touch**
+  - **Usually don’t touch**
   - `threshold_abs`: keep `null` unless you have a controlled pipeline and want a fixed absolute threshold (relative is more exposure/contrast robust).
-  - `descriptor_radius`: keep `null` so descriptors use the same ring radius as detection (avoids accidental mismatches).
+  - `descriptor_radius10`: keep `null` (or omit) so descriptors follow the detector ring radius (avoids accidental mismatches).
   - `nms_radius` / `min_cluster_size`: leave defaults unless you’re deliberately trading recall vs noise; these are easy to overtune.
 
 - SIMD and `rayon` are gated by Cargo features:
@@ -181,13 +217,9 @@ only need to touch a few knobs:
 
 ## Status
 
-Implemented:
-- response kernel, ring tables, NMS + thresholding + cluster filter, 5x5 subpixel refinement, image helpers, data-free unit tests, tracing instrumentation
-- multiscale pyramid builder with reusable buffers and coarse-to-fine corner refinement path
-- SIMD acceleration and optional `rayon` parallelism on the response path; pyramid downsampling can opt into SIMD/parallelism via `par_pyramid`
-- CLI tooling and plotting helper for JSON/PNG-based inspection
+Stable, ready to use, published on [`crates.io`](https://crates.io/crates/chess-corners). Public API still may change, mostly by changing parameters set. User feedback is very welcome (create an issue or write me).
 
-For contribution rules see [AGENTS.md](./AGENTS.md).
+For contribution rules see [CONTRIBUTING.md](./CONTRIBUTING.md) and [AGENTS.md](./AGENTS.md).
 
 ## License
 
