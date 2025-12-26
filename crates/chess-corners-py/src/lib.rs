@@ -140,9 +140,9 @@ impl ChessConfigPy {
 fn extract_image<'py>(
     image: &Bound<'py, PyAny>,
 ) -> PyResult<(PyReadonlyArray2<'py, u8>, usize, usize)> {
-    let array = image.extract::<PyReadonlyArray2<u8>>().map_err(|_| {
-        PyTypeError::new_err("image must be a uint8 numpy array of shape (H, W)")
-    })?;
+    let array = image
+        .extract::<PyReadonlyArray2<u8>>()
+        .map_err(|_| PyTypeError::new_err("image must be a uint8 numpy array of shape (H, W)"))?;
     let view = array.as_array();
     if !view.is_standard_layout() {
         return Err(PyValueError::new_err(
@@ -166,12 +166,10 @@ fn find_chess_corners<'py>(
         PyValueError::new_err("image must be a C-contiguous uint8 array of shape (H, W)")
     })?;
 
-    let width_u32 = u32::try_from(w).map_err(|_| {
-        PyValueError::new_err("image width exceeds u32::MAX")
-    })?;
-    let height_u32 = u32::try_from(h).map_err(|_| {
-        PyValueError::new_err("image height exceeds u32::MAX")
-    })?;
+    let width_u32 =
+        u32::try_from(w).map_err(|_| PyValueError::new_err("image width exceeds u32::MAX"))?;
+    let height_u32 =
+        u32::try_from(h).map_err(|_| PyValueError::new_err("image height exceeds u32::MAX"))?;
 
     let cfg_default = chess_corners_rs::ChessConfig::default();
     let cfg_ref = cfg.map(|cfg| &cfg.inner).unwrap_or(&cfg_default);
