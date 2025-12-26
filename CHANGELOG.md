@@ -7,8 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [unreleased]
 
-- Default value for the `num_levels` parameter is `1` to avoid problemts with multiscale at first try
-- python bindings are published
+## [0.2.1]
+
+### Added
+
+- Python bindings via the `chess-corners-py` crate (`chess_corners` module).
+
+### Changed
+
+- Default `PyramidParams::num_levels` is now `1` instead of `3`. It improves detection stability with the default config by trading off some performance.
+- Documentation updates covering Python usage (README, book, and crate docs).
 
 ## [0.2.0]
 
