@@ -11,7 +11,13 @@ source .venv/bin/activate
 pip install -r tools/ml_refiner/requirements.txt
 ```
 
-`matplotlib` is optional (only needed for `--preview`).
+`matplotlib` is optional (only needed for `--preview` and calibration plots).
+
+Optional install:
+
+```bash
+pip install matplotlib
+```
 
 ## Generate a dataset
 
@@ -88,3 +94,34 @@ python tools/ml_refiner/synth/generate_dataset.py \
   that adjusts edge sharpness.
 - Gaussian blur and noise are sampled per patch; confidence is a deterministic
   function of their strengths.
+
+## Train a baseline model
+
+```bash
+python tools/ml_refiner/train.py --config tools/ml_refiner/configs/train_v1.yaml
+```
+
+By default, `device: auto` selects MPS if available, otherwise CPU.
+
+Outputs are stored under `tools/ml_refiner/runs/<timestamp>/` with:
+
+- `config.yaml`
+- `metrics.jsonl`
+- `model_best.pt` and `model_last.pt`
+
+## Evaluate a checkpoint
+
+```bash
+python tools/ml_refiner/eval.py \\
+  --config tools/ml_refiner/configs/train_v1.yaml \\
+  --checkpoint tools/ml_refiner/runs/<run>/model_best.pt
+```
+
+Optional calibration plot:
+
+```bash
+python tools/ml_refiner/eval.py \\
+  --config tools/ml_refiner/configs/train_v1.yaml \\
+  --checkpoint tools/ml_refiner/runs/<run>/model_best.pt \\
+  --plot tools/ml_refiner/runs/<run>/calibration.png
+```
