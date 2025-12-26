@@ -132,3 +132,15 @@ python tools/ml_refiner/eval.py \\
   --checkpoint tools/ml_refiner/runs/<run>/model_best.pt \\
   --plot tools/ml_refiner/runs/<run>/calibration.png
 ```
+
+## Compare ML vs OpenCV cornerSubPix
+
+Requires `opencv-python` (see `tools/ml_refiner/requirements.txt`).
+
+```bash
+python tools/ml_refiner/eval/compare_opencv.py \\
+  --config tools/ml_refiner/configs/compare_opencv_v1.yaml
+```
+
+This writes a JSON summary and optional plots under
+`tools/ml_refiner/runs/compare_opencv/<timestamp>/`.
