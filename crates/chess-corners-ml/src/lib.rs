@@ -157,17 +157,17 @@ const EMBED_ONNX_DATA_NAME: &str = "chess_refiner_v2.onnx.data";
 #[cfg(feature = "embed-model")]
 const EMBED_ONNX: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../assets/ml/chess_refiner_v2.onnx"
+    "/assets/ml/chess_refiner_v2.onnx"
 ));
 #[cfg(feature = "embed-model")]
 const EMBED_ONNX_DATA: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../assets/ml/chess_refiner_v2.onnx.data"
+    "/assets/ml/chess_refiner_v2.onnx.data"
 ));
 #[cfg(feature = "embed-model")]
 const EMBED_META_JSON: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../assets/ml/fixtures/v2/meta.json"
+    "/assets/ml/fixtures/v2/meta.json"
 ));
 
 #[cfg(feature = "embed-model")]
