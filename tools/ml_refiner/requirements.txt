@@ -1,0 +1,7 @@
+numpy
+pyyaml
+torch
+opencv-python
+onnx
+onnxruntime
+onnxscript

@@ -5,10 +5,13 @@
 //! share the same behavior.
 
 use anyhow::{Context, Result};
+#[cfg(feature = "ml-refiner")]
+use chess_corners::find_chess_corners_image_with_ml;
 use chess_corners::{
     find_chess_corners_image, ChessConfig, ChessParams, CoarseToFineParams, RefinerKind,
 };
 use image::{ImageBuffer, ImageReader, Luma};
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, io::Write, path::Path, path::PathBuf};
 
@@ -25,6 +28,8 @@ pub struct DetectionConfig {
     pub threshold_abs: Option<f32>,
     /// Subpixel refiner selection (center_of_mass, forstner, saddle_point).
     pub refiner: Option<RefinerMethod>,
+    /// Enable the ML refiner pipeline (requires the `ml-refiner` feature).
+    pub ml: Option<bool>,
     pub radius10: Option<bool>,
     pub descriptor_radius10: Option<bool>,
     pub nms_radius: Option<u32>,
@@ -79,8 +84,22 @@ pub fn run_detection(cfg: DetectionConfig) -> Result<()> {
     let mut config = ChessConfig::default();
     apply_params_overrides(&mut config.params, &cfg)?;
     apply_multiscale_overrides(&mut config.multiscale, &cfg)?;
+    info!("refiner: {:?}", config.params.refiner);
 
-    let corners = find_chess_corners_image(&img, &config);
+    let use_ml = cfg.ml.unwrap_or(false);
+    let corners = if use_ml {
+        #[cfg(feature = "ml-refiner")]
+        {
+            info!("ml refiner: enabled");
+            find_chess_corners_image_with_ml(&img, &config)
+        }
+        #[cfg(not(feature = "ml-refiner"))]
+        {
+            anyhow::bail!("ml refiner requires the \"ml-refiner\" feature")
+        }
+    } else {
+        find_chess_corners_image(&img, &config)
+    };
 
     let levels = config.multiscale.pyramid.num_levels;
     let min_size = config.multiscale.pyramid.min_size;

@@ -18,6 +18,14 @@ corners = chess_corners.find_chess_corners(img, cfg)
 print(corners.shape, corners.dtype)
 ```
 
+You can also configure the detector via nested config objects:
+
+```python
+cfg = chess_corners.ChessConfig()
+cfg.params.threshold_rel = 0.2
+cfg.multiscale.pyramid.num_levels = 2
+```
+
 ## What `find_chess_corners` returns
 
 `find_chess_corners(image, cfg=None)` returns a NumPy `float32` array of shape
@@ -63,6 +71,46 @@ Multiscale parameters (`cfg.*`):
   - Coarse-level ROI radius used for coarse-to-fine refinement.
 - `merge_radius` (float, default `3.0`)
   - Merge near-duplicate refined corners within this radius (pixels).
+
+## Full configuration structs
+
+The Python bindings expose all configuration structs directly. You can use the
+nested API for clarity:
+
+- `ChessConfig.params` → `ChessParams`
+- `ChessConfig.multiscale` → `CoarseToFineParams`
+- `CoarseToFineParams.pyramid` → `PyramidParams`
+
+All fields listed above are available in the nested structs as well.
+
+## Classical refiners
+
+Select the classic refiner via `ChessParams.refiner`:
+
+```python
+cfg = chess_corners.ChessConfig()
+cfg.params.refiner = chess_corners.RefinerKind.forstner(
+    chess_corners.ForstnerConfig()
+)
+```
+
+Available configs:
+- `CenterOfMassConfig`
+- `ForstnerConfig`
+- `SaddlePointConfig`
+
+## ML refiner
+
+If the bindings are built with the `ml-refiner` feature, an ML-backed refiner
+is available via `find_chess_corners_with_ml`:
+
+```python
+cfg = chess_corners.ChessConfig()
+corners = chess_corners.find_chess_corners_with_ml(img, cfg)
+```
+
+The ML refiner uses built-in defaults and ignores the model’s confidence
+output in the current version.
 
 ## Development
 

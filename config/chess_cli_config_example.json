@@ -1,5 +1,5 @@
 {
-  "image": "testdata/images/Cam1.png",
+  "image": "testimages/mid.png",
   "pyramid_levels": 3,
   "min_size": 256,
   "refinement_radius":3,
@@ -8,7 +8,7 @@
   "output_png": null,
   "threshold_rel": 0.2,
   "threshold_abs": null,
-  "refiner": "saddle_point",
+  "refiner": "center_of_mass",
   "radius10": false,
   "nms_radius": 2,
   "min_cluster_size": 2,
