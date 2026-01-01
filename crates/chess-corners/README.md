@@ -7,6 +7,7 @@ This crate:
 
 - Re-exports the main types from `chess-corners-core` (`ChessParams`, `CornerDescriptor`, `ResponseMap`).
 - Provides a unified `ChessConfig` for single-scale and multiscale detection.
+- Exposes `PyramidParams` for tuning pyramid construction via `CoarseToFineParams`.
 - Adds optional `image::GrayImage` integration and a small CLI binary for batch runs.
 - Exposes pluggable subpixel refiners (`RefinerKind` via `ChessParams::refiner`) so you can choose
   between center-of-mass (default), Förstner, or saddle-point refinement.

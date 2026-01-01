@@ -207,7 +207,7 @@ pub use crate::multiscale::{
 };
 #[cfg(feature = "ml-refiner")]
 pub use crate::multiscale::{find_chess_corners_buff_with_ml, find_chess_corners_with_ml};
-pub use crate::pyramid::PyramidBuffers;
+pub use crate::pyramid::{PyramidBuffers, PyramidParams};
 
 /// Unified detector configuration combining response/detector params and
 /// multiscale/pyramid tuning.

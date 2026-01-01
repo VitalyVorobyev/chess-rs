@@ -27,3 +27,32 @@ def test_find_chess_corners_rejects_wrong_dtype():
     img = _checkerboard(square_size=16, squares=8).astype(np.float32)
     with pytest.raises(TypeError):
         chess_corners.find_chess_corners(img)
+
+
+def test_nested_config_objects():
+    cfg = chess_corners.ChessConfig()
+    cfg.params.threshold_rel = 0.15
+    cfg.multiscale.pyramid.num_levels = 1
+    assert cfg.params.threshold_rel == pytest.approx(0.15)
+    assert cfg.multiscale.pyramid.num_levels == 1
+
+
+def test_refiner_kind_config():
+    cfg = chess_corners.ChessConfig()
+    forstner = chess_corners.ForstnerConfig()
+    forstner.max_offset = 2.0
+    cfg.params.refiner = chess_corners.RefinerKind.forstner(forstner)
+    assert cfg.params.refiner.kind == "forstner"
+
+
+def test_ml_refiner_api():
+    if not hasattr(chess_corners, "find_chess_corners_with_ml"):
+        pytest.skip("ml-refiner bindings not enabled")
+    img = _checkerboard(square_size=8, squares=4)
+    cfg = chess_corners.ChessConfig()
+    ml = chess_corners.MlRefinerParams()
+    ml.batch_size = 1
+    corners = chess_corners.find_chess_corners_with_ml(img, cfg, ml)
+    assert corners.dtype == np.float32
+    assert corners.ndim == 2
+    assert corners.shape[1] == 4

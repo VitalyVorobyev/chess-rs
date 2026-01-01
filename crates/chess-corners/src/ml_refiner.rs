@@ -178,15 +178,18 @@ pub(crate) fn detect_corners_with_ml(
         stats.extracted += 1;
         state.indices.push(idx);
         if state.indices.len() == state.batch_size {
-            run_batch(
+            let input = BatchInput {
                 model,
-                state.patch_size,
-                &state.buffer,
+                patch_size: state.patch_size,
+                buffer: &state.buffer,
+                candidates: &candidates,
+                params: &state.params,
+                ctx: &ctx,
+            };
+            run_batch(
+                input,
                 state.indices.len(),
                 &state.indices,
-                &candidates,
-                &state.params,
-                &ctx,
                 &mut state.fallback_refiner,
                 &mut results,
                 &mut stats,
@@ -196,15 +199,18 @@ pub(crate) fn detect_corners_with_ml(
     }
 
     if !state.indices.is_empty() {
-        run_batch(
+        let input = BatchInput {
             model,
-            state.patch_size,
-            &state.buffer,
+            patch_size: state.patch_size,
+            buffer: &state.buffer,
+            candidates: &candidates,
+            params: &state.params,
+            ctx: &ctx,
+        };
+        run_batch(
+            input,
             state.indices.len(),
             &state.indices,
-            &candidates,
-            &state.params,
-            &ctx,
             &mut state.fallback_refiner,
             &mut results,
             &mut stats,
@@ -258,39 +264,44 @@ fn load_model(params: &MlRefinerParams, patch_size: usize) -> Option<MlModel> {
     }
 }
 
-fn run_batch(
-    model: &MlModel,
+struct BatchInput<'a> {
+    model: &'a MlModel,
     patch_size: usize,
-    buffer: &[f32],
+    buffer: &'a [f32],
+    candidates: &'a [Corner],
+    params: &'a MlRefinerParams,
+    ctx: &'a RefineContext<'a>,
+}
+
+fn run_batch(
+    input: BatchInput<'_>,
     batch_count: usize,
     indices: &[usize],
-    candidates: &[Corner],
-    params: &MlRefinerParams,
-    ctx: &RefineContext<'_>,
     fallback_refiner: &mut Option<Refiner>,
     results: &mut [Option<Corner>],
     stats: &mut MlRefineStats,
 ) {
-    let patch_area = patch_size * patch_size;
+    let patch_area = input.patch_size * input.patch_size;
     let end = batch_count * patch_area;
-    let preds = match model.infer_batch(&buffer[..end], batch_count) {
+    let preds = match input.model.infer_batch(&input.buffer[..end], batch_count) {
         Ok(preds) => preds,
         Err(err) => {
             warn!("ML inference failed: {err}");
             stats.infer_fail += indices.len();
             for &idx in indices {
-                results[idx] = apply_fallback(&candidates[idx], params, ctx, fallback_refiner);
+                results[idx] =
+                    apply_fallback(&input.candidates[idx], input.params, input.ctx, fallback_refiner);
             }
             return;
         }
     };
 
-    let conf_threshold = params.conf_threshold;
+    let conf_threshold = input.params.conf_threshold;
     let used = preds.len().min(indices.len());
     stats.inferred += used;
     for (slot, pred) in preds.iter().take(used).enumerate() {
         let idx = indices[slot];
-        let corner = &candidates[idx];
+        let corner = &input.candidates[idx];
         let dx = pred[0];
         let dy = pred[1];
         let conf = sigmoid(pred[2]);
@@ -298,7 +309,7 @@ fn run_batch(
         if let Some(thr) = conf_threshold {
             if conf < thr {
                 stats.low_conf += 1;
-                results[idx] = apply_fallback(corner, params, ctx, fallback_refiner);
+                results[idx] = apply_fallback(corner, input.params, input.ctx, fallback_refiner);
                 continue;
             }
         }
@@ -317,7 +328,8 @@ fn run_batch(
         );
         stats.infer_fail += indices.len() - preds.len();
         for &idx in &indices[preds.len()..] {
-            results[idx] = apply_fallback(&candidates[idx], params, ctx, fallback_refiner);
+            results[idx] =
+                apply_fallback(&input.candidates[idx], input.params, input.ctx, fallback_refiner);
         }
     }
 }
@@ -493,7 +505,7 @@ mod tests {
         let ok = extract_patch_u8_to_f32(view, 2.0, 2.0, 3, &mut out).is_some();
         assert!(ok);
 
-        let expected = img[1 * width + 1] as f32 / 255.0;
+        let expected = img[width + 1] as f32 / 255.0;
         assert!((out[0] - expected).abs() < 1e-6);
 
         let expected_center = img[2 * width + 2] as f32 / 255.0;
@@ -525,13 +537,17 @@ mod tests {
         resp.data[idx(17, 16)] = 1.0;
         resp.data[idx(18, 16)] = 5.0;
 
-        let mut params = ChessParams::default();
-        params.refiner = RefinerKind::CenterOfMass(crate::CenterOfMassConfig { radius: 1 });
+        let params = ChessParams {
+            refiner: RefinerKind::CenterOfMass(crate::CenterOfMassConfig { radius: 1 }),
+            ..Default::default()
+        };
 
-        let mut ml_params = MlRefinerParams::default();
-        ml_params.model_path = Some(PathBuf::from("missing.onnx"));
-        ml_params.patch_size = 3;
-        ml_params.fallback = MlFallback::UseClassicRefiner;
+        let ml_params = MlRefinerParams {
+            model_path: Some(PathBuf::from("missing.onnx")),
+            patch_size: 3,
+            fallback: MlFallback::UseClassicRefiner,
+            ..Default::default()
+        };
 
         let mut state = MlRefinerState::new(&ml_params, &params.refiner);
         let corners = detect_corners_with_ml(&resp, &params, None, &mut state);
